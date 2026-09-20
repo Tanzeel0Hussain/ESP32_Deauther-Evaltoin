@@ -17,7 +17,10 @@ inline bool parseUnsignedDecimal(
     const uint32_t digit =
       static_cast<uint32_t>(*p - '0');
 
-    if (parsed > (maximum - digit) / 10U) {
+    if (
+      parsed >
+      (UINT32_MAX - digit) / 10U
+    ) {
       return false;
     }
 
