@@ -2,13 +2,16 @@
 #include <Arduino.h>
 #include "storage.h"
 
-void detectorBegin();
+bool detectorBegin();
 void detectorLoop();
 void detectorReset();
 void detectorUpdateThreshold(uint16_t threshold);
-void detectorPause();
-void detectorResume();
+bool detectorPause();
+bool detectorResume();
 bool detectorPaused();
+bool detectorHealthy();
+String detectorStatus();
+int32_t detectorLastError();
 
 uint32_t detectorTotalDeauth();
 uint32_t detectorTotalDisassoc();
