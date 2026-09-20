@@ -1,16 +1,16 @@
 #pragma once
 #include <Arduino.h>
-#include "models.h"
 
 void detectorBegin();
 void detectorLoop();
-void detectorSetChannel(uint8_t channel);
-uint8_t detectorChannel();
-void detectorPause();
-void detectorResume();
-bool detectorPaused();
+void detectorReset();
+void detectorUpdateThreshold(uint16_t threshold);
 
-ThreatStats detectorStats();
-String detectorStatsJson();
+uint32_t detectorTotalDeauth();
+uint32_t detectorTotalDisassoc();
+uint32_t detectorAlertCount();
+int8_t detectorLastRssi();
+uint8_t detectorLastChannel();
+
 String detectorAlertsJson();
-void detectorClearAlerts();
+String detectorChannelJson();

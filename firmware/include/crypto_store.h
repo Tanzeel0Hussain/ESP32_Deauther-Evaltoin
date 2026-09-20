@@ -1,6 +1,6 @@
 #pragma once
 #include <Arduino.h>
 
-bool defenseSecretProtected(const String& storedValue);
-String defenseProtectSecret(const String& plainText);
-String defenseUnprotectSecret(const String& storedValue);
+bool isProtectedSecret(const String& value);
+String protectSecret(const String& plainText);
+String unprotectSecret(const String& storedValue);

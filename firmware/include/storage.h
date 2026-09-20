@@ -1,35 +1,26 @@
 #pragma once
 #include <Arduino.h>
 
-void defenseStorageBegin();
+void storageBegin();
 
-String defenseApSsid();
-String defenseApPassword();
-String defenseAdminUser();
-String defenseAdminPassword();
+String getApSsid();
+String getApPassword();
+String getAdminUser();
+String getAdminPassword();
+uint8_t getMonitorChannel();
+uint16_t getAlertThreshold();
 
-bool defenseInitialSetupRequired();
-bool defenseSaveInitialCredentials(
-  const String& ssid,
+bool initialSetupRequired();
+bool setInitialCredentials(
+  const String& apSsid,
   const String& apPassword,
   const String& adminUser,
   const String& adminPassword
 );
-bool defenseSaveCredentials(
-  const String& ssid,
-  const String& apPassword,
-  const String& adminUser,
-  const String& adminPassword
-);
+bool setMonitorChannel(uint8_t channel);
+bool setAlertThreshold(uint16_t threshold);
 
-uint16_t defenseAlertThreshold();
-bool defenseSetAlertThreshold(uint16_t threshold);
-
-uint8_t defenseMonitorChannel();
-bool defenseSetMonitorChannel(uint8_t channel);
-
-void defenseFactoryReset();
-
-void defenseAppendLog(const String& type, const String& message);
-String defenseLogsJson();
-void defenseClearLogs();
+void appendEventLog(const String& type, const String& message);
+String getEventLogJson();
+void clearEventLogs();
+void factoryResetStorage();

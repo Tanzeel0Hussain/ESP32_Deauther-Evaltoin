@@ -1,4 +1,3 @@
 #pragma once
-
-void defenseDisplayBegin();
-void defenseDisplayLoop();
+void displayBegin();
+void displayLoop();
