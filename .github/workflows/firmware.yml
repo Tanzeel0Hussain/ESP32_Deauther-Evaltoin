@@ -48,6 +48,23 @@ jobs:
             -o /tmp/defense-tests
           /tmp/defense-tests
 
+      - name: Enforce defensive-only maintained firmware
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -R --line-number --fixed-string "esp_wifi_80211_tx" firmware/src firmware/include; then
+            echo "::error::Raw 802.11 transmit/injection API found in maintained firmware."
+            exit 1
+          fi
+
+          if grep -R --line-number -E "capturedPass|evil[ _-]?twin|handshake capture|pmkid capture" firmware/src firmware/include; then
+            echo "::error::Credential-harvesting/offensive implementation marker found in maintained firmware."
+            exit 1
+          fi
+
+          echo "Defensive-only source guard passed."
+
       - name: Build firmware
         run: pio run -e esp32dev
 

@@ -28,7 +28,7 @@ The maintained firmware is intentionally defensive. It does **not** include deau
 | Channel analytics | Event activity for 2.4 GHz channels 1–13 |
 | Local dashboard | Responsive dark dashboard at `192.168.4.1` |
 | Security | WPA2 management AP, HTTP Digest admin auth, per-boot CSRF token |
-| Credential storage | AES-256-GCM protected local management credentials |
+| Credential storage | AES-256-GCM protected credentials + serial-assisted recovery |
 | First boot | Mandatory replacement of public setup credentials |
 | Event history | Reset reasons, scans, settings changes and detector events |
 | OLED | Optional SSD1306 128×64 status display on GPIO 21/22 |
@@ -61,7 +61,7 @@ These are setup-only defaults. The Wi-Fi password and admin password must be cha
 
 ## How detection works
 
-The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window.
+The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window. The radio callback queues only fixed-size alert metadata; MAC formatting and alert-history updates happen later in the normal firmware loop instead of inside the Wi-Fi callback.
 
 An alert means **suspicious management-frame activity was observed**. It is not proof that a specific device is malicious, because MAC addresses can be spoofed and legitimate infrastructure may also emit management frames.
 
@@ -146,7 +146,7 @@ pio device monitor -b 115200
 | Real RF detection sensitivity | Requires controlled lab validation |
 | OLED hardware | Requires optional display hardware |
 
-See [Hardware Notes](docs/HARDWARE.md) before testing.
+See [Architecture](docs/ARCHITECTURE.md), [Detection Model](docs/DETECTION.md), [Hardware Notes](docs/HARDWARE.md), and the [Validation Checklist](docs/VALIDATION.md) before final hardware validation.
 
 ## Responsible use
 
