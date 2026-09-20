@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include "config.h"
+#include "detector.h"
 #include "models.h"
 #include "text_utils.h"
 #include "storage.h"
@@ -40,8 +41,28 @@ void wifiScannerBegin() {
 void wifiScannerLoop() {}
 
 bool wifiScannerRun() {
-  const int found = WiFi.scanNetworks(false, true);
-  if (found < 0) return false;
+  const bool wasPaused = detectorPaused();
+
+  if (!wasPaused) {
+    detectorPause();
+  }
+
+  const int found = WiFi.scanNetworks(
+    false,
+    true,
+    false,
+    120
+  );
+
+  if (found < 0) {
+    WiFi.scanDelete();
+
+    if (!wasPaused) {
+      detectorResume();
+    }
+
+    return false;
+  }
 
   networkCount = 0;
   strongest = -127;
@@ -72,6 +93,10 @@ bool wifiScannerRun() {
       channel,
       WIFI_SECOND_CHAN_NONE
     );
+  }
+
+  if (!wasPaused) {
+    detectorResume();
   }
 
   lastScanMs = millis();

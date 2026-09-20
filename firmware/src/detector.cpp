@@ -32,6 +32,7 @@ int8_t lastRssi = -127;
 uint8_t lastChannel = 0;
 uint32_t channelEvents[14] = {};
 uint16_t alertThreshold = DefenseConfig::DEFAULT_ALERT_THRESHOLD;
+bool paused = false;
 
 portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -183,16 +184,45 @@ void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
 }
 
 void detectorBegin() {
+  alertThreshold = getAlertThreshold();
+
   wifi_promiscuous_filter_t filter = {};
   filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
 
   esp_wifi_set_promiscuous(false);
+  esp_wifi_set_channel(
+    getMonitorChannel(),
+    WIFI_SECOND_CHAN_NONE
+  );
   esp_wifi_set_promiscuous_filter(&filter);
   esp_wifi_set_promiscuous_rx_cb(&promiscuousCallback);
   esp_wifi_set_promiscuous(true);
+  paused = false;
 }
 
 void detectorLoop() {}
+
+void detectorPause() {
+  if (paused) return;
+  esp_wifi_set_promiscuous(false);
+  paused = true;
+}
+
+void detectorResume() {
+  if (!paused) return;
+
+  esp_wifi_set_channel(
+    getMonitorChannel(),
+    WIFI_SECOND_CHAN_NONE
+  );
+
+  esp_wifi_set_promiscuous(true);
+  paused = false;
+}
+
+bool detectorPaused() {
+  return paused;
+}
 
 void detectorReset() {
   portENTER_CRITICAL(&mux);

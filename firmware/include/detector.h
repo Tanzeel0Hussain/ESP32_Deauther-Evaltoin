@@ -5,6 +5,9 @@ void detectorBegin();
 void detectorLoop();
 void detectorReset();
 void detectorUpdateThreshold(uint16_t threshold);
+void detectorPause();
+void detectorResume();
+bool detectorPaused();
 
 uint32_t detectorTotalDeauth();
 uint32_t detectorTotalDisassoc();
