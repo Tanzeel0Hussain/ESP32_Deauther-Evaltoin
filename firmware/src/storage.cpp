@@ -216,14 +216,19 @@ void storageBegin() {
         "Provisioned management credentials are missing, unprotected, or could not be decrypted."
       );
     }
-  } else if (
-    storedAp.length() !=
-    storedAdmin.length()
-  ) {
-    // A partial credential write is not a valid first-boot state.
-    enterRecoveryMode(
-      "Incomplete management credential state detected."
-    );
+  } else {
+    const bool hasAp =
+      storedAp.length() > 0;
+
+    const bool hasAdmin =
+      storedAdmin.length() > 0;
+
+    if (hasAp != hasAdmin) {
+      // A partial credential write is not a valid first-boot state.
+      enterRecoveryMode(
+        "Incomplete management credential state detected."
+      );
+    }
   }
 }
 
