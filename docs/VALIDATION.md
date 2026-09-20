@@ -9,7 +9,7 @@ CI verifies compilation and pure detector logic, but it cannot prove real RF beh
 | First-boot security | Normal dashboard remains locked until both setup passwords are replaced |
 | Dashboard | `192.168.4.1` loads and status updates repeatedly |
 | Persistence | Credentials, channel and threshold survive a power cycle |
-| Nearby scan | Authorized local networks show plausible SSID/BSSID/RSSI/channel/security |
+| Nearby scan | Authorized local networks show plausible SSID/BSSID/RSSI/channel/security using the passive scan path |
 | Scan recovery | Passive detector resumes on the configured channel after scanning |
 | Channel change | Management AP and detector return on the selected channel after restart |
 | Passive counters | Authorized lab disconnect/reconnect activity increments observed counters |
@@ -18,6 +18,7 @@ CI verifies compilation and pure detector logic, but it cannot prove real RF beh
 | Cooldown | Repeated activity respects the configured alert cooldown |
 | Detector reset | Counters and alerts clear without corrupting settings |
 | Logs | Boot/scan/settings events persist and clear correctly |
+| Credential recovery | Corrupt one stored provisioned credential on a sacrificial test device/NVS image | Device boots directly into serial-assisted random recovery instead of using public defaults |
 | Factory reset | Settings and credential master secret clear; first-boot setup returns |
 | OLED | Optional SSD1306 status displays correctly at address 0x3C |
 | Heap stability | Repeated dashboard refreshes/scans do not progressively exhaust heap |
