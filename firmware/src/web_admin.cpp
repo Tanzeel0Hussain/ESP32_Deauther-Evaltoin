@@ -1,16 +1,14 @@
 #include <Arduino.h>
+#include <WiFi.h>
 #include <WebServer.h>
+#include <esp_system.h>
 
-extern "C" {
-#include "esp_system.h"
-}
-
-#include "web_admin.h"
 #include "config.h"
 #include "detector.h"
-#include "scanner.h"
 #include "storage.h"
 #include "text_utils.h"
+#include "web_admin.h"
+#include "wifi_scanner.h"
 
 namespace {
 WebServer server(80);
@@ -19,62 +17,37 @@ bool restartPending = false;
 unsigned long restartAt = 0;
 
 String makeToken() {
-  char token[33];
-
+  char out[33];
   snprintf(
-    token,
-    sizeof(token),
+    out,
+    sizeof(out),
     "%08lX%08lX%08lX%08lX",
     static_cast<unsigned long>(esp_random()),
     static_cast<unsigned long>(esp_random()),
     static_cast<unsigned long>(esp_random()),
     static_cast<unsigned long>(esp_random())
   );
-
-  return String(token);
+  return String(out);
 }
 
 bool csrfValid() {
-  const String value = server.arg("csrf");
   return
     csrfToken.length() == 32 &&
-    value.length() == csrfToken.length() &&
-    value == csrfToken;
+    server.arg("csrf") == csrfToken;
 }
 
-bool requireAdmin(bool allowInitialSetup = false) {
-  const String user = defenseAdminUser();
-  const String password = defenseAdminPassword();
-
-  if (
-    !server.authenticate(
-      user.c_str(),
-      password.c_str()
-    )
-  ) {
-    server.requestAuthentication(
-      DIGEST_AUTH,
-      "ESP32 Defense Lab"
-    );
+bool requireAdmin(bool allowSetup = false) {
+  if (!server.authenticate(getAdminUser().c_str(), getAdminPassword().c_str())) {
+    server.requestAuthentication(DIGEST_AUTH, "ESP32 Defense Lab");
     return false;
   }
 
-  if (
-    server.method() != HTTP_GET &&
-    !csrfValid()
-  ) {
-    server.send(
-      403,
-      "text/plain",
-      "Invalid or missing CSRF token."
-    );
+  if (server.method() != HTTP_GET && !csrfValid()) {
+    server.send(403, "text/plain", "Invalid or missing CSRF token.");
     return false;
   }
 
-  if (
-    !allowInitialSetup &&
-    defenseInitialSetupRequired()
-  ) {
+  if (!allowSetup && initialSetupRequired()) {
     server.sendHeader("Location", "/");
     server.send(303);
     return false;
@@ -90,588 +63,300 @@ void scheduleRestart() {
 
 String setupPage() {
   String html;
-  html.reserve(5600);
+  html.reserve(6000);
 
-  html = R"HTML(<!doctype html><html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
-<title>ESP32 Defense Lab Setup</title>
+  html += R"HTML(<!doctype html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ESP32 Wireless Defense Lab · Security Setup</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#06111c;color:#eef8ff;font-family:Inter,system-ui,sans-serif}
-.wrap{max-width:720px;margin:auto;padding:32px 18px}.card{background:#0c1d2c;border:1px solid #1e3e53;border-radius:20px;padding:24px;box-shadow:0 28px 90px #0007}
-.badge{display:inline-block;color:#4fe2ff;font-size:.76rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase}
-h1{margin:10px 0 8px;font-size:clamp(2rem,7vw,3.4rem)}p{color:#9eb7c8;line-height:1.65}
-label{display:block;margin-top:14px;color:#c8deeb;font-size:.82rem;font-weight:800}
-input{width:100%;margin-top:6px;background:#071522;border:1px solid #29475b;color:#fff;border-radius:12px;padding:13px}
-button{width:100%;margin-top:19px;border:0;border-radius:12px;padding:14px;background:linear-gradient(135deg,#0a7cff,#38e5ff);color:#03111b;font-weight:950;cursor:pointer}
-.note{margin-top:16px;padding:13px;border-radius:12px;background:#09243a;color:#9ab5c7;font-size:.82rem}
-</style></head><body><main class="wrap"><section class="card">
+*{box-sizing:border-box}body{margin:0;background:#06111d;color:#eff8ff;font-family:system-ui,sans-serif}
+main{max-width:720px;margin:auto;padding:28px 18px}.card{background:#0c1d2d;border:1px solid #213a50;border-radius:20px;padding:24px;box-shadow:0 30px 90px rgba(0,0,0,.35)}
+.badge{color:#56dcff;font-size:.78rem;font-weight:900;letter-spacing:.09em;text-transform:uppercase}
+h1{font-size:clamp(2rem,7vw,3.3rem);margin:9px 0 10px}p{color:#9cb1c3;line-height:1.6}
+label{display:block;margin-top:14px;color:#c6dae8;font-size:.84rem;font-weight:700}
+input{width:100%;margin-top:6px;background:#071521;border:1px solid #29475f;color:#fff;border-radius:11px;padding:12px}
+button{width:100%;margin-top:19px;border:0;border-radius:11px;padding:14px;background:linear-gradient(135deg,#1479ff,#29d9ff);font-weight:900;color:#04111a}
+.note{margin-top:15px;background:#082238;border:1px solid #173d59;border-radius:11px;padding:12px;color:#9db7ca;font-size:.82rem}
+</style></head><body><main><section class="card">
 <div class="badge">Mandatory first-boot security</div>
-<h1>Secure the Defense Lab.</h1>
-<p>The factory credentials are setup-only. Choose a new management Wi-Fi password and a different administrator password before the monitoring dashboard is unlocked.</p>
-<form method="post" action="/setup/security">
+<h1>Secure the defense dashboard.</h1>
+<p>Replace the public setup credentials before monitoring. The management Wi-Fi password and admin password must be different.</p>
+<form method="post" action="/setup">
 <input type="hidden" name="csrf" value=")HTML";
-
   html += csrfToken;
-
   html += R"HTML(">
 <label>Management Wi-Fi name</label>
 <input name="ssid" maxlength="32" value=")HTML";
-
-  html +=
-    DefenseText::htmlEscape(
-      defenseApSsid()
-    );
-
+  html += DefenseText::htmlEscape(getApSsid());
   html += R"HTML(" required>
 <label>New Wi-Fi password (8–63 characters)</label>
-<input name="ap_password" type="password" minlength="8" maxlength="63" autocomplete="new-password" required>
+<input name="ap_password" type="password" minlength="8" maxlength="63" required>
 <label>Admin username</label>
 <input name="admin_user" maxlength="32" value="admin" required>
 <label>New admin password (8–64 characters)</label>
-<input name="admin_password" type="password" minlength="8" maxlength="64" autocomplete="new-password" required>
-<button type="submit">Save Security Settings & Restart</button>
+<input name="admin_password" type="password" minlength="8" maxlength="64" required>
+<button>Save & Restart</button>
 </form>
-<div class="note">The two passwords must be different. After restart, reconnect to the new management Wi-Fi and open <b>192.168.4.1</b>.</div>
+<div class="note">This firmware is passive-only. It monitors management frames and nearby network metadata; it does not inject frames, clone access points, or collect Wi-Fi credentials.</div>
 </section></main></body></html>)HTML";
-
   return html;
 }
 
 String dashboardPage() {
   String html;
-  html.reserve(25000);
+  html.reserve(26000);
 
-  html = R"HTML(<!doctype html><html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+  html += R"HTML(<!doctype html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ESP32 Wireless Defense Lab</title>
 <style>
-:root{--bg:#050d16;--panel:#0b1926;--panel2:#0d2233;--line:#1d394b;--text:#edf8ff;--muted:#88a6ba;--cyan:#44e5ff;--blue:#348cff;--green:#49e7a6;--amber:#ffca5b;--red:#ff6578}
-*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 85% -10%,#0b3e66 0,transparent 34%),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
-main{max-width:1180px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:10px 0 18px}.brand b{font-size:1.12rem}.brand small{display:block;color:var(--muted);margin-top:3px}
-.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;color:var(--cyan);background:#081a28}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:linear-gradient(180deg,#0d1d2b,#081520);border:1px solid var(--line);border-radius:18px;padding:17px;box-shadow:0 18px 55px #0004;margin-bottom:13px}
-.metric small,.muted,small{color:var(--muted)}.metric strong{display:block;font-size:1.55rem;margin-top:7px}.span2{grid-column:span 2}h1,h2,h3{margin-top:0}h2{font-size:1.08rem}
-.actions{display:flex;flex-wrap:wrap;gap:8px}.btn,button{border:1px solid #27617d;border-radius:10px;background:#0b3048;color:#dff8ff;padding:10px 13px;font-weight:800;cursor:pointer}.btn.primary,button.primary{background:linear-gradient(135deg,#087aff,#38e4ff);color:#03111a;border:0}.danger{border-color:#663343;background:#35151e;color:#ff9eaa}
-input,select{background:#06131e;border:1px solid #274355;color:#fff;border-radius:10px;padding:10px;max-width:100%}form.inline{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.row{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #122b3a}.row:last-child{border-bottom:0}.network-main{min-width:0}.network-main b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{color:var(--muted);font-size:.8rem;margin-top:4px}
-.status{font-weight:900}.Normal{color:var(--green)}.Warning{color:var(--amber)}.Critical{color:var(--red)}
-table{width:100%;border-collapse:collapse;font-size:.83rem}th,td{text-align:left;padding:9px;border-bottom:1px solid #153044}th{color:#9fc3d7}.scroll{overflow:auto}.empty{color:var(--muted);padding:10px 0}
-@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.span2{grid-column:span 2}}
-@media(max-width:560px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}.span2{grid-column:span 1}.metric strong{font-size:1.35rem}.row{align-items:flex-start;flex-direction:column}}
+:root{--bg:#050d17;--panel:#0b1a28;--panel2:#0e2233;--line:#1c384e;--text:#eff8ff;--muted:#8ca8bb;--cyan:#43d9ff;--blue:#2c7dff;--green:#50e6a7;--amber:#ffd166;--red:#ff637d}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 70% -20%,#12375a 0,transparent 42%),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif}
+main{max-width:1220px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
+.brand small{display:block;color:var(--cyan);font-weight:900;letter-spacing:.1em}.brand h1{margin:4px 0;font-size:clamp(1.6rem,4vw,2.7rem)}
+.pill{padding:8px 12px;border:1px solid #1d4962;border-radius:999px;background:#071c2a;color:var(--green);font-size:.82rem}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:linear-gradient(180deg,#0c1e2e,#081522);border:1px solid var(--line);border-radius:17px;padding:17px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+.metric b{display:block;font-size:1.8rem;margin-top:6px}.muted{color:var(--muted)}.two{display:grid;grid-template-columns:1.15fr .85fr;gap:14px;margin-top:14px}
+h2,h3{margin:0 0 12px}.actions{display:flex;flex-wrap:wrap;gap:8px}.btn,button{border:0;border-radius:10px;padding:10px 13px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,var(--blue),var(--cyan));color:#041019}.secondary{background:#132a3d;color:#dcefff;border:1px solid #244a65}.danger{background:#4a1822;color:#ffdce2;border:1px solid #763040}
+table{width:100%;border-collapse:collapse;font-size:.86rem}th,td{text-align:left;padding:9px;border-bottom:1px solid #173247}th{color:#8fb4c9}.table-wrap{overflow:auto;max-height:420px}
+input,select{width:100%;background:#071520;color:#fff;border:1px solid #29465c;border-radius:9px;padding:10px;margin:5px 0 10px}
+.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--green);box-shadow:0 0 15px var(--green);margin-right:7px}
+.warn{color:var(--amber)}.alert{color:var(--red)}code{color:#91e8ff}
+canvas{width:100%;height:180px;background:#06131f;border-radius:12px}
+@media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+@media(max-width:480px){main{padding:14px}.grid{grid-template-columns:1fr 1fr}.metric b{font-size:1.35rem}}
 </style></head><body><main>
-<div class="top">
-<div class="brand"><b>🛡️ ESP32 Wireless Defense Lab</b><small>Passive 2.4 GHz management-frame monitor · v)HTML";
-
-  html += DefenseConfig::VERSION;
-
-  html += R"HTML(</small></div>
-<div class="pill">Management: )HTML";
-
-  html +=
-    DefenseText::htmlEscape(
-      defenseApSsid()
-    );
-
-  html += R"HTML( · 192.168.4.1</div>
-</div>
-
+<div class="top"><div class="brand"><small>PASSIVE WIRELESS DEFENSE</small><h1>ESP32 Wireless Defense Lab</h1><div class="muted">Local monitor · no frame injection · no credential capture</div></div><div class="pill"><span class="status-dot"></span>Monitor active</div></div>
 <div class="grid">
-<section class="card metric"><small>Threat level</small><strong id="level" class="Normal">Normal</strong></section>
-<section class="card metric"><small>Monitor channel</small><strong id="channel">—</strong></section>
-<section class="card metric"><small>Deauth frames</small><strong id="deauth">0</strong></section>
-<section class="card metric"><small>Disassoc frames</small><strong id="disassoc">0</strong></section>
-
-<section class="card span2">
-<h2>Live Detection</h2>
-<div class="row"><div><b>Current 10-second window</b><div class="meta">Passive observation only. No frames are transmitted to third-party networks.</div></div><div id="window">0</div></div>
-<div class="row"><div><b>Strongest active source</b><div class="meta">Source MAC seen in recent deauth/disassociation frames.</div></div><div id="source">—</div></div>
-<div class="row"><div><b>Last observed RSSI</b></div><div id="rssi">—</div></div>
-<div class="row"><div><b>Free heap</b></div><div id="heap">—</div></div>
-</section>
-
-<section class="card span2">
-<h2>Monitor Settings</h2>
-<form class="inline" method="post" action="/settings/monitor">
-<label>Channel <select name="channel">)HTML";
-
-  for (uint8_t ch = 1; ch <= 13; ++ch) {
-    html += "<option value='" + String(ch) + "'";
-
-    if (ch == defenseMonitorChannel()) {
-      html += " selected";
-    }
-
-    html += ">" + String(ch) + "</option>";
-  }
-
-  html += R"HTML(</select></label>
-<label>Warning threshold <input name="threshold" type="number" min="3" max="200" value=")HTML";
-
-  html += String(defenseAlertThreshold());
-
-  html += R"HTML("></label>
-<button class="primary">Apply</button>
-</form>
-<p><small>Threshold counts deauthentication + disassociation frames inside each 10-second detection window. Critical = 3× warning threshold.</small></p>
+<section class="card metric"><span class="muted">Deauth frames</span><b id="deauth">0</b></section>
+<section class="card metric"><span class="muted">Disassoc frames</span><b id="disassoc">0</b></section>
+<section class="card metric"><span class="muted">Alerts</span><b id="alertCount">0</b></section>
+<section class="card metric"><span class="muted">Nearby networks</span><b id="networkCount">0</b></section>
+</div>
+<div class="two">
+<section class="card"><h3>Threat Alerts</h3><div class="actions"><button class="secondary" onclick="refreshAll()">Refresh</button><button class="danger" onclick="post('/detector/reset')">Clear Detector</button></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Type</th><th>BSSID / Source</th><th>Ch</th><th>RSSI</th><th>Burst</th><th>Reason</th></tr></thead><tbody id="alerts"></tbody></table></div></section>
+<section class="card"><h3>Monitor Settings</h3>
+<label class="muted">Monitor / management channel (1–13)</label><input id="channel" type="number" min="1" max="13">
+<label class="muted">Burst alert threshold (3–200 frames / 5 sec)</label><input id="threshold" type="number" min="3" max="200">
+<div class="actions"><button onclick="saveSettings()">Save & Restart if Channel Changed</button></div>
+<p class="muted">Because classic ESP32 has one 2.4 GHz radio, the management AP and passive monitor share one selected channel.</p>
+<hr style="border:0;border-top:1px solid #173247;margin:18px 0">
+<h3>Device</h3><div id="device" class="muted"></div>
 </section>
 </div>
-
-<section class="card">
-<div class="row"><div><h2 style="margin:0">Nearby Wi-Fi Inventory</h2><div class="meta">A manual scan briefly pauses channel monitoring, then returns to the selected channel.</div></div><button class="primary" type="button" onclick="runScan()">Scan Networks</button></div>
-<div id="networks" class="empty">No scan yet.</div>
-</section>
-
-<section class="card">
-<div class="row"><div><h2 style="margin:0">Threat Alerts</h2><div class="meta">Recent passive deauth/disassociation bursts.</div></div>
-<form method="post" action="/alerts/clear"><button>Clear Alerts</button></form></div>
-<div class="scroll"><table><thead><tr><th>Age</th><th>Level</th><th>Source</th><th>CH</th><th>RSSI</th><th>Deauth</th><th>Disassoc</th></tr></thead><tbody id="alerts"><tr><td colspan="7" class="empty">No alerts.</td></tr></tbody></table></div>
-</section>
-
-<section class="card">
-<div class="row"><div><h2 style="margin:0">Event Log</h2><div class="meta">Local device events and detector alerts.</div></div>
-<form method="post" action="/logs/clear"><button>Clear Log</button></form></div>
-<div class="scroll"><table><thead><tr><th>Age</th><th>Type</th><th>Message</th></tr></thead><tbody id="logs"><tr><td colspan="3" class="empty">No events.</td></tr></tbody></table></div>
-</section>
-
-<section class="card">
-<h2>Security & Device</h2>
-<form class="inline" method="post" action="/settings/security">
-<input name="ssid" maxlength="32" value=")HTML";
-
-  html +=
-    DefenseText::htmlEscape(
-      defenseApSsid()
-    );
-
-  html += R"HTML(" placeholder="Management SSID" required>
-<input name="ap_password" type="password" minlength="8" maxlength="63" placeholder="New Wi-Fi password" required>
-<input name="admin_user" maxlength="32" value=")HTML";
-
-  html +=
-    DefenseText::htmlEscape(
-      defenseAdminUser()
-    );
-
-  html += R"HTML(" placeholder="Admin user" required>
-<input name="admin_password" type="password" minlength="8" maxlength="64" placeholder="New admin password" required>
-<button>Change Credentials</button>
-</form>
-<div class="actions" style="margin-top:14px">
-<form method="post" action="/system/restart"><button>Restart ESP32</button></form>
-<form method="post" action="/system/factory-reset" onsubmit="return confirm('Erase Defense Lab settings and restart?')"><button class="danger">Factory Reset</button></form>
+<div class="two">
+<section class="card"><h3>Nearby Wi-Fi Inventory</h3><div class="actions"><button onclick="scan()">Scan Networks</button></div><div class="table-wrap"><table><thead><tr><th>SSID</th><th>BSSID</th><th>RSSI</th><th>Channel</th><th>Security</th></tr></thead><tbody id="networks"></tbody></table></div></section>
+<section class="card"><h3>Channel Event Activity</h3><canvas id="chart" width="600" height="220"></canvas><p class="muted">Counts only observed deauthentication/disassociation management frames. It is not a full spectrum analyzer.</p></section>
 </div>
-</section>
-
+<div class="two">
+<section class="card"><h3>System Event Log</h3><div class="actions"><button class="secondary" onclick="loadLogs()">Refresh Logs</button><button class="danger" onclick="post('/logs/clear')">Clear Logs</button></div><div id="logs" class="muted" style="margin-top:12px"></div></section>
+<section class="card"><h3>System Controls</h3><p class="muted">Management AP: <code>)HTML";
+  html += DefenseText::htmlEscape(getApSsid());
+  html += R"HTML(</code> · Dashboard: <code>192.168.4.1</code></p>
+<div class="actions"><button class="secondary" onclick="post('/system/restart')">Restart ESP32</button><button class="danger" onclick="factoryReset()">Factory Reset</button></div>
+<p class="muted" style="margin-top:14px">Firmware version )HTML";
+  html += DefenseConfig::VERSION;
+  html += R"HTML( · Built for defensive monitoring and authorized lab observation.</p></section>
+</div>
 <script>
-const csrfToken=')HTML";
-
+const csrf=')HTML";
   html += csrfToken;
-
   html += R"HTML(';
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-
-document.addEventListener('submit',event=>{
-  const form=event.target;
-  if(
-    form instanceof HTMLFormElement &&
-    form.method.toLowerCase()==='post' &&
-    !form.querySelector('input[name="csrf"]')
-  ){
-    const input=document.createElement('input');
-    input.type='hidden';
-    input.name='csrf';
-    input.value=csrfToken;
-    form.prepend(input);
-  }
-},true);
-
-const age=s=>{
-  const n=Number(s||0);
-  if(n<60)return n+'s';
-  if(n<3600)return Math.floor(n/60)+'m';
-  return Math.floor(n/3600)+'h';
-};
-
-async function loadStatus(){
-  const s=await fetch('/api/status').then(r=>r.json());
-  const level=document.getElementById('level');
-  level.textContent=s.level;
-  level.className='status '+s.level;
-  document.getElementById('channel').textContent=s.channel;
-  document.getElementById('deauth').textContent=s.deauthFrames.toLocaleString();
-  document.getElementById('disassoc').textContent=s.disassocFrames.toLocaleString();
-  document.getElementById('window').textContent=(s.windowDeauth+s.windowDisassoc)+' disconnect / '+s.windowTotal+' management';
-  document.getElementById('source').textContent=s.topSource||'—';
-  document.getElementById('rssi').textContent=s.lastRssi+' dBm';
-  document.getElementById('heap').textContent=Math.round(s.freeHeap/1024)+' KB';
-}
-
-async function loadAlerts(){
-  const data=await fetch('/api/alerts').then(r=>r.json());
-  const now=Math.floor(performance.now()/1000);
-  document.getElementById('alerts').innerHTML=data.length?data.map(a=>`
-    <tr>
-      <td>${age(Math.max(0,now-a.seconds))}</td>
-      <td class="${esc(a.level)}"><b>${esc(a.level)}</b></td>
-      <td>${esc(a.source)}</td>
-      <td>${a.channel}</td>
-      <td>${a.rssi} dBm</td>
-      <td>${a.deauth}</td>
-      <td>${a.disassoc}</td>
-    </tr>`).join(''):'<tr><td colspan="7" class="empty">No alerts.</td></tr>';
-}
-
-async function loadLogs(){
-  const data=await fetch('/api/logs').then(r=>r.json());
-  const now=Math.floor(performance.now()/1000);
-  document.getElementById('logs').innerHTML=data.length?data.map(l=>`
-    <tr><td>${age(Math.max(0,now-l.seconds))}</td><td>${esc(l.type)}</td><td>${esc(l.message)}</td></tr>`).join(''):'<tr><td colspan="3" class="empty">No events.</td></tr>';
-}
-
-async function loadNetworks(){
-  const data=await fetch('/api/networks').then(r=>r.json());
-  const box=document.getElementById('networks');
-
-  box.innerHTML=data.length?data.map(n=>`
-    <div class="row">
-      <div class="network-main">
-        <b>${esc(n.ssid||'(hidden SSID)')}</b>
-        <div class="meta">${esc(n.bssid)} · CH ${n.channel} · ${n.rssi} dBm · ${n.secure?'Secured':'Open'}</div>
-      </div>
-      <form method="post" action="/settings/channel">
-        <input type="hidden" name="csrf" value="${csrfToken}">
-        <input type="hidden" name="channel" value="${n.channel}">
-        <button>Monitor CH ${n.channel}</button>
-      </form>
-    </div>`).join(''):'<div class="empty">No networks found.</div>';
-}
-
-async function runScan(){
-  const button=event.currentTarget;
-  button.disabled=true;
-  button.textContent='Scanning…';
-
-  try{
-    const body=new URLSearchParams({csrf:csrfToken});
-    const response=await fetch('/scan',{
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body
-    });
-
-    if(!response.ok)throw new Error('scan failed');
-    await loadNetworks();
-  }catch(e){
-    alert('Wi-Fi scan failed.');
-  }finally{
-    button.disabled=false;
-    button.textContent='Scan Networks';
-  }
-}
-
-loadStatus();
-loadAlerts();
-loadLogs();
-loadNetworks();
-
-setInterval(loadStatus,2000);
-setInterval(loadAlerts,5000);
-setInterval(loadLogs,7000);
-</script>
-</main></body></html>)HTML";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'');
+async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json()}
+async function post(path,data={}){data.csrf=csrf;const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});if(!r.ok){alert(await r.text());return false}if(r.redirected)location.href=r.url;return true}
+function td(tr,text,cls=''){const d=document.createElement('td');d.textContent=esc(text);if(cls)d.className=cls;tr.appendChild(d)}
+async function loadStatus(){const s=await api('/api/status');$('deauth').textContent=s.deauth;$('disassoc').textContent=s.disassoc;$('alertCount').textContent=s.alerts;$('networkCount').textContent=s.networks;$('channel').value=s.monitorChannel;$('threshold').value=s.threshold;$('device').textContent=s.chip+' · rev '+s.revision+' · free heap '+s.freeHeap+' B · uptime '+s.uptimeSeconds+'s · IP '+s.ip;}
+async function loadAlerts(){const data=await api('/api/alerts');const body=$('alerts');body.textContent='';data.forEach(a=>{const tr=document.createElement('tr');td(tr,a.seconds+'s');td(tr,a.type,'alert');td(tr,a.bssid+' / '+a.source);td(tr,a.channel);td(tr,a.rssi+' dBm');td(tr,a.burst);td(tr,a.reason);body.appendChild(tr)})}
+async function loadNetworks(){const data=await api('/api/networks');const body=$('networks');body.textContent='';data.sort((a,b)=>b.rssi-a.rssi).forEach(n=>{const tr=document.createElement('tr');td(tr,n.ssid||'(hidden)');td(tr,n.bssid);td(tr,n.rssi+' dBm');td(tr,n.channel);td(tr,n.security,n.security==='Open'?'warn':'');body.appendChild(tr)})}
+async function loadChannels(){const data=await api('/api/channels');const c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);const max=Math.max(1,...data.map(v=>v.events));data.forEach((v,i)=>{const bw=w/13-7,bh=(v.events/max)*(h-35),left=i*(w/13)+4;x.fillStyle='#2c7dff';x.fillRect(left,h-bh-22,bw,bh);x.fillStyle='#9fc3d7';x.font='12px system-ui';x.fillText(String(v.channel),left+bw/3,h-6)});}
+async function loadLogs(){const data=await api('/api/logs');const box=$('logs');box.textContent='';[...data].reverse().forEach(l=>{const p=document.createElement('div');p.style.padding='7px 0';p.style.borderBottom='1px solid #173247';p.textContent='boot '+l.boot+' · +'+l.seconds+'s · '+l.type+': '+l.message;box.appendChild(p)})}
+async function scan(){const ok=await post('/scan');if(ok){await loadNetworks();await loadStatus()}}
+async function saveSettings(){const ok=await post('/settings',{channel:$('channel').value,threshold:$('threshold').value});if(ok)alert('Settings saved. If the channel changed, reconnect after restart.')}
+async function factoryReset(){if(confirm('Erase dashboard settings, passwords and logs?'))await post('/system/factory-reset')}
+async function refreshAll(){await Promise.all([loadStatus(),loadAlerts(),loadNetworks(),loadChannels(),loadLogs()])}
+refreshAll();setInterval(()=>Promise.all([loadStatus(),loadAlerts(),loadChannels()]),4000);
+</script></main></body></html>)HTML";
 
   return html;
 }
+
+String statusJson() {
+  String json = "{";
+  json += "\\"project\\":\\"" + String(DefenseConfig::PROJECT_NAME) + "\\"";
+  json += ",\\"version\\":\\"" + String(DefenseConfig::VERSION) + "\\"";
+  json += ",\\"ip\\":\\"" + WiFi.softAPIP().toString() + "\\"";
+  json += ",\\"chip\\":\\"" + DefenseText::jsonEscape(ESP.getChipModel()) + "\\"";
+  json += ",\\"revision\\":" + String(ESP.getChipRevision());
+  json += ",\\"freeHeap\\":" + String(ESP.getFreeHeap());
+  json += ",\\"uptimeSeconds\\":" + String(millis() / 1000UL);
+  json += ",\\"monitorChannel\\":" + String(getMonitorChannel());
+  json += ",\\"threshold\\":" + String(getAlertThreshold());
+  json += ",\\"networks\\":" + String(wifiScannerCount());
+  json += ",\\"openNetworks\\":" + String(wifiScannerOpenCount());
+  json += ",\\"strongestRssi\\":" + String(wifiScannerStrongestRssi());
+  json += ",\\"deauth\\":" + String(detectorTotalDeauth());
+  json += ",\\"disassoc\\":" + String(detectorTotalDisassoc());
+  json += ",\\"alerts\\":" + String(detectorAlertCount());
+  json += ",\\"lastRssi\\":" + String(detectorLastRssi());
+  json += ",\\"lastChannel\\":" + String(detectorLastChannel());
+  json += "}";
+  return json;
+}
 }
 
-void defenseWebBegin() {
+void webAdminBegin() {
   csrfToken = makeToken();
 
   server.on("/", HTTP_GET, []() {
     if (!requireAdmin(true)) return;
-
-    if (defenseInitialSetupRequired()) {
-      server.send(
-        200,
-        "text/html; charset=utf-8",
-        setupPage()
-      );
-      return;
-    }
-
     server.send(
       200,
       "text/html; charset=utf-8",
-      dashboardPage()
+      initialSetupRequired() ? setupPage() : dashboardPage()
     );
   });
 
-  server.on("/setup/security", HTTP_POST, []() {
+  server.on("/setup", HTTP_POST, []() {
     if (!requireAdmin(true)) return;
-
-    if (!defenseInitialSetupRequired()) {
+    if (!initialSetupRequired()) {
       server.sendHeader("Location", "/");
       server.send(303);
       return;
     }
 
-    const bool ok =
-      defenseSaveInitialCredentials(
-        server.arg("ssid"),
-        server.arg("ap_password"),
-        server.arg("admin_user"),
-        server.arg("admin_password")
-      );
-
-    if (!ok) {
+    if (!setInitialCredentials(
+      server.arg("ssid"),
+      server.arg("ap_password"),
+      server.arg("admin_user"),
+      server.arg("admin_password")
+    )) {
       server.send(
         400,
         "text/plain",
-        "Invalid credentials. Use a 1-32 character SSID, 8-63 character Wi-Fi password, 1-32 character username, 8-64 character admin password, keep the two passwords different, and replace the factory passwords."
+        "Invalid credentials. Use a 1-32 character SSID, 8-63 character Wi-Fi password, 1-32 character admin user, 8-64 character admin password, keep both passwords different, and replace the factory defaults."
       );
       return;
     }
 
-    defenseAppendLog(
-      "security",
-      "Mandatory first-boot credentials changed"
-    );
-
+    appendEventLog("security", "First-boot credentials changed");
     server.send(
       200,
       "text/html",
-      "<h2>Security setup complete.</h2><p>The ESP32 is restarting. Reconnect using the new management Wi-Fi credentials.</p>"
+      "<h2>Security setup complete.</h2><p>The ESP32 is restarting. Reconnect using your new management Wi-Fi password.</p>"
     );
-
     scheduleRestart();
   });
 
   server.on("/api/status", HTTP_GET, []() {
     if (!requireAdmin()) return;
-    server.send(
-      200,
-      "application/json",
-      detectorStatsJson()
-    );
-  });
-
-  server.on("/api/alerts", HTTP_GET, []() {
-    if (!requireAdmin()) return;
-    server.send(
-      200,
-      "application/json",
-      detectorAlertsJson()
-    );
+    server.send(200, "application/json", statusJson());
   });
 
   server.on("/api/networks", HTTP_GET, []() {
     if (!requireAdmin()) return;
-    server.send(
-      200,
-      "application/json",
-      scannerNetworksJson()
-    );
+    server.send(200, "application/json", wifiScannerJson());
+  });
+
+  server.on("/api/alerts", HTTP_GET, []() {
+    if (!requireAdmin()) return;
+    server.send(200, "application/json", detectorAlertsJson());
+  });
+
+  server.on("/api/channels", HTTP_GET, []() {
+    if (!requireAdmin()) return;
+    server.send(200, "application/json", detectorChannelJson());
   });
 
   server.on("/api/logs", HTTP_GET, []() {
     if (!requireAdmin()) return;
-    server.send(
-      200,
-      "application/json",
-      defenseLogsJson()
-    );
+    server.send(200, "application/json", getEventLogJson());
   });
 
   server.on("/scan", HTTP_POST, []() {
     if (!requireAdmin()) return;
-
-    const bool ok = scannerRun();
-
+    const bool ok = wifiScannerRun();
+    appendEventLog("scan", ok ? "Nearby Wi-Fi scan completed" : "Wi-Fi scan failed");
     server.send(
       ok ? 200 : 500,
       "application/json",
-      ok
-        ? "{\"ok\":true}"
-        : "{\"ok\":false}"
+      ok ? wifiScannerJson() : "{\\"error\\":\\"scan failed\\"}"
     );
   });
 
-  server.on("/settings/channel", HTTP_POST, []() {
+  server.on("/settings", HTTP_POST, []() {
     if (!requireAdmin()) return;
 
-    const int channel =
-      server.arg("channel").toInt();
+    const int channel = server.arg("channel").toInt();
+    const int threshold = server.arg("threshold").toInt();
 
-    if (channel < 1 || channel > 13) {
-      server.send(
-        400,
-        "text/plain",
-        "Channel must be 1-13."
-      );
+    if (channel < 1 || channel > 13 || threshold < 3 || threshold > 200) {
+      server.send(400, "text/plain", "Channel must be 1-13 and threshold 3-200.");
       return;
     }
 
-    detectorSetChannel(
-      static_cast<uint8_t>(channel)
-    );
-
-    server.sendHeader("Location", "/");
-    server.send(303);
-  });
-
-  server.on("/settings/monitor", HTTP_POST, []() {
-    if (!requireAdmin()) return;
-
-    const int channel =
-      server.arg("channel").toInt();
-
-    const int threshold =
-      server.arg("threshold").toInt();
+    const bool channelChanged =
+      static_cast<uint8_t>(channel) != getMonitorChannel();
 
     if (
-      channel < 1 ||
-      channel > 13 ||
-      threshold < 3 ||
-      threshold > 200
+      !setMonitorChannel(static_cast<uint8_t>(channel)) ||
+      !setAlertThreshold(static_cast<uint16_t>(threshold))
     ) {
-      server.send(
-        400,
-        "text/plain",
-        "Channel must be 1-13 and threshold 3-200."
-      );
+      server.send(500, "text/plain", "Could not persist settings.");
       return;
     }
 
-    if (
-      !defenseSetAlertThreshold(
-        static_cast<uint16_t>(threshold)
-      )
-    ) {
-      server.send(
-        500,
-        "text/plain",
-        "Could not save threshold."
-      );
-      return;
-    }
+    detectorUpdateThreshold(static_cast<uint16_t>(threshold));
+    appendEventLog("settings", "Monitor channel/threshold updated");
+    server.send(200, "application/json", "{\\"ok\\":true}");
 
-    detectorSetChannel(
-      static_cast<uint8_t>(channel)
-    );
-
-    server.sendHeader("Location", "/");
-    server.send(303);
+    if (channelChanged) scheduleRestart();
   });
 
-  server.on("/settings/security", HTTP_POST, []() {
+  server.on("/detector/reset", HTTP_POST, []() {
     if (!requireAdmin()) return;
-
-    const bool ok =
-      defenseSaveCredentials(
-        server.arg("ssid"),
-        server.arg("ap_password"),
-        server.arg("admin_user"),
-        server.arg("admin_password")
-      );
-
-    if (!ok) {
-      server.send(
-        400,
-        "text/plain",
-        "Invalid security settings. Passwords must meet length rules and be different."
-      );
-      return;
-    }
-
-    defenseAppendLog(
-      "security",
-      "Management credentials changed"
-    );
-
-    server.send(
-      200,
-      "text/html",
-      "<h2>Credentials changed.</h2><p>The ESP32 is restarting. Reconnect using the new management Wi-Fi credentials.</p>"
-    );
-
-    scheduleRestart();
-  });
-
-  server.on("/alerts/clear", HTTP_POST, []() {
-    if (!requireAdmin()) return;
-    detectorClearAlerts();
-    server.sendHeader("Location", "/");
-    server.send(303);
+    detectorReset();
+    appendEventLog("detector", "Passive detector counters cleared");
+    server.send(200, "application/json", "{\\"ok\\":true}");
   });
 
   server.on("/logs/clear", HTTP_POST, []() {
     if (!requireAdmin()) return;
-    defenseClearLogs();
-    defenseAppendLog("system", "Event log cleared");
-    server.sendHeader("Location", "/");
-    server.send(303);
+    clearEventLogs();
+    appendEventLog("system", "Event log cleared");
+    server.send(200, "application/json", "{\\"ok\\":true}");
   });
 
   server.on("/system/restart", HTTP_POST, []() {
     if (!requireAdmin()) return;
-
-    defenseAppendLog(
-      "system",
-      "Restart requested from dashboard"
-    );
-
-    server.send(
-      200,
-      "text/html",
-      "<h2>Restarting ESP32…</h2>"
-    );
-
+    appendEventLog("system", "Manual restart requested");
+    server.send(200, "application/json", "{\\"ok\\":true}");
     scheduleRestart();
   });
 
   server.on("/system/factory-reset", HTTP_POST, []() {
     if (!requireAdmin()) return;
-
-    defenseFactoryReset();
-
-    server.send(
-      200,
-      "text/html",
-      "<h2>Factory reset complete.</h2><p>The ESP32 is restarting into first-boot setup.</p>"
-    );
-
+    factoryResetStorage();
+    server.send(200, "application/json", "{\\"ok\\":true}");
     scheduleRestart();
   });
 
-  server.onNotFound([]() {
-    if (!requireAdmin()) return;
+  server.on("/health", HTTP_GET, []() {
+    server.send(200, "application/json", "{\\"status\\":\\"ok\\",\\"mode\\":\\"passive-defense\\"}");
+  });
 
-    server.send(
-      404,
-      "text/plain",
-      "Not found"
-    );
+  server.onNotFound([]() {
+    server.send(404, "text/plain", "Not found");
   });
 
   server.begin();
-
-  defenseAppendLog(
-    "web",
-    "Secure local dashboard started"
-  );
 }
 
-void defenseWebLoop() {
+void webAdminLoop() {
   server.handleClient();
 
-  if (
-    restartPending &&
-    millis() - restartAt > 1200
-  ) {
+  if (restartPending && millis() - restartAt >= 1000) {
     ESP.restart();
   }
 }
