@@ -33,8 +33,8 @@ String resetReason(esp_reset_reason_t reason) {
 }
 }
 
-void defenseSystemBegin() {
-  defenseAppendLog(
+void systemMonitorBegin() {
+  appendEventLog(
     "system",
     resetReason(esp_reset_reason())
   );
@@ -65,7 +65,7 @@ void defenseSystemBegin() {
       addResult == ESP_ERR_INVALID_STATE;
   }
 
-  defenseAppendLog(
+  appendEventLog(
     "system",
     watchdogReady
       ? "Task watchdog active"
@@ -73,7 +73,7 @@ void defenseSystemBegin() {
   );
 }
 
-void defenseSystemLoop() {
+void systemMonitorLoop() {
   if (watchdogReady) {
     esp_task_wdt_reset();
   }

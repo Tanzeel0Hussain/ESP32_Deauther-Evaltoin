@@ -1,4 +1,4 @@
 #pragma once
 
-void defenseSystemBegin();
-void defenseSystemLoop();
+void systemMonitorBegin();
+void systemMonitorLoop();
