@@ -1,68 +1,70 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-extern "C" {
-#include "esp_wifi.h"
-}
-
 #include "config.h"
-#include "detector.h"
-#include "display.h"
 #include "storage.h"
+#include "detector.h"
+#include "scanner.h"
+#include "display.h"
+#include "system_monitor.h"
 #include "web_admin.h"
-#include "wifi_scanner.h"
 
 void setup() {
   Serial.begin(115200);
-  delay(400);
-
-  storageBegin();
-
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.disconnect(true, true);
-  delay(100);
-
-  IPAddress ip(
-    DefenseConfig::AP_IP_A,
-    DefenseConfig::AP_IP_B,
-    DefenseConfig::AP_IP_C,
-    DefenseConfig::AP_IP_D
-  );
-
-  WiFi.softAPConfig(ip, ip, IPAddress(255, 255, 255, 0));
-  WiFi.softAP(
-    getApSsid().c_str(),
-    getApPassword().c_str(),
-    getMonitorChannel(),
-    false,
-    4
-  );
-
-  detectorUpdateThreshold(getAlertThreshold());
-  detectorBegin();
-  wifiScannerBegin();
-  displayBegin();
-  webAdminBegin();
-
-  appendEventLog(
-    "system",
-    "Booted passive defense monitor on channel " +
-      String(getMonitorChannel())
-  );
+  delay(350);
 
   Serial.println();
-  Serial.println(DefenseConfig::PROJECT_NAME);
+  Serial.println("==============================");
+  Serial.println("ESP32 Wireless Defense Lab");
+  Serial.println("Passive monitoring firmware");
+  Serial.println("==============================");
+
+  defenseStorageBegin();
+
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_AP);
+
+  const uint8_t channel =
+    defenseMonitorChannel();
+
+  const bool apReady =
+    WiFi.softAP(
+      defenseApSsid().c_str(),
+      defenseApPassword().c_str(),
+      channel,
+      false,
+      4
+    );
+
   Serial.print("Management AP: ");
-  Serial.println(getApSsid());
+  Serial.println(defenseApSsid());
   Serial.print("Dashboard: http://");
   Serial.println(WiFi.softAPIP());
-  Serial.println("Passive-only firmware: no frame injection or credential capture.");
+
+  if (!apReady) {
+    Serial.println(
+      "WARNING: management AP failed to start."
+    );
+  }
+
+  scannerBegin();
+  detectorBegin();
+  defenseDisplayBegin();
+  defenseSystemBegin();
+  defenseWebBegin();
+
+  defenseAppendLog(
+    "system",
+    String("Firmware v") +
+    DefenseConfig::VERSION +
+    " ready"
+  );
 }
 
 void loop() {
-  webAdminLoop();
   detectorLoop();
-  wifiScannerLoop();
-  displayLoop();
+  defenseDisplayLoop();
+  defenseWebLoop();
+  defenseSystemLoop();
   delay(2);
 }
