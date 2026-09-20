@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: defense-firmware-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -37,8 +37,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PlatformIO
-        run: pip install platformio esptool
+      - name: Install pinned firmware tooling
+        run: pip install "platformio==6.1.18" "esptool==4.8.1"
 
       - name: Run host detector tests
         run: |
@@ -48,22 +48,30 @@ jobs:
             -o /tmp/defense-tests
           /tmp/defense-tests
 
-      - name: Enforce defensive-only maintained firmware
+      - name: Enforce defensive-only maintained source
         shell: bash
         run: |
           set -euo pipefail
 
-          if grep -R --line-number --fixed-string "esp_wifi_80211_tx" firmware/src firmware/include; then
-            echo "::error::Raw 802.11 transmit/injection API found in maintained firmware."
+          mapfile -d '' SOURCE_FILES < <(
+            find . -type f \
+              \( -name '*.c' -o -name '*.cc' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' -o -name '*.ino' -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.sh' \) \
+              -not -path './.git/*' \
+              -not -path './.pio/*' \
+              -print0
+          )
+
+          if grep --line-number --with-filename --fixed-string "esp_wifi_80211_tx" "${SOURCE_FILES[@]}"; then
+            echo "::error::Raw 802.11 transmit/injection API found in maintained source."
             exit 1
           fi
 
-          if grep -R --line-number -E "capturedPass|evil[ _-]?twin|handshake capture|pmkid capture" firmware/src firmware/include; then
-            echo "::error::Credential-harvesting/offensive implementation marker found in maintained firmware."
+          if grep --line-number --with-filename -E "capturedPass|evil[ _-]?twin|handshake capture|pmkid capture" "${SOURCE_FILES[@]}"; then
+            echo "::error::Credential-harvesting/offensive implementation marker found in maintained source."
             exit 1
           fi
 
-          echo "Defensive-only source guard passed."
+          echo "Defensive-only repository source guard passed."
 
       - name: Build firmware
         run: pio run -e esp32dev
@@ -128,11 +136,21 @@ jobs:
             docs/firmware/boot_app0.bin
             docs/firmware/firmware.bin
 
-      - name: Publish browser firmware
+      - name: Publish browser firmware from exact built commit
+        id: publish
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
         shell: bash
         run: |
           set -euo pipefail
+
+          SOURCE_SHA="${GITHUB_SHA}"
+          git fetch origin main
+          REMOTE_SHA="$(git rev-parse origin/main)"
+
+          if [ "$REMOTE_SHA" != "$SOURCE_SHA" ]; then
+            echo "::error::main moved after this release build started; refusing to publish binaries compiled from an older source commit."
+            exit 1
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -143,8 +161,9 @@ jobs:
             git commit -m "build: publish ESP32 Defense Lab browser firmware"
           fi
 
-          git pull --rebase origin main
-          git push
+          PUBLISH_SHA="$(git rev-parse HEAD)"
+          git push origin HEAD:main
+          echo "publish_sha=$PUBLISH_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Tag and publish immutable release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
@@ -156,6 +175,12 @@ jobs:
 
           VERSION="$(tr -d '[:space:]' < VERSION)"
           TAG="v$VERSION"
+          PUBLISH_SHA="${{ steps.publish.outputs.publish_sha }}"
+
+          if [ -z "$PUBLISH_SHA" ]; then
+            echo "::error::No immutable publish SHA was produced."
+            exit 1
+          fi
 
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::VERSION must use semantic version format."
@@ -163,13 +188,19 @@ jobs:
           fi
 
           git fetch --tags origin
+          git fetch origin main
+
+          if [ "$(git rev-parse origin/main)" != "$PUBLISH_SHA" ]; then
+            echo "::error::main moved before tagging; refusing to tag a different source/binary state."
+            exit 1
+          fi
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "::error::Tag $TAG already exists. Releases are immutable."
             exit 1
           fi
 
-          git tag -a "$TAG" -m "ESP32 Wireless Defense Lab $TAG"
+          git tag -a "$TAG" "$PUBLISH_SHA" -m "ESP32 Wireless Defense Lab $TAG"
           git push origin "$TAG"
 
           (
