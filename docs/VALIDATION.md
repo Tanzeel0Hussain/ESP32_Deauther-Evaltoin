@@ -19,8 +19,8 @@ CI verifies compilation and pure detector logic, but it cannot prove real RF beh
 | Cooldown | Repeated activity respects the configured alert cooldown |
 | Detector reset | Counters and alerts clear without corrupting settings |
 | Logs | Boot/scan/settings events persist and clear correctly |
-| Credential recovery | Corrupt one stored provisioned credential on a sacrificial test device/NVS image | Device boots directly into serial-assisted random recovery instead of using public defaults |
-| Credential transaction rollback | Interrupt/fail a staged credential update before commit on a sacrificial NVS image | Previously committed credentials remain active; an incomplete first setup enters recovery |
+| Credential recovery | After corrupting one stored provisioned credential on a sacrificial test device/NVS image, the device boots directly into serial-assisted random recovery instead of using public defaults |
+| Credential transaction rollback | If a staged credential update is interrupted before commit on a sacrificial NVS image, previously committed credentials remain active; an incomplete first setup enters recovery |
 | Factory reset | Settings and credential master secret clear; first-boot setup returns |
 | OLED | Optional SSD1306 status displays correctly at address 0x3C |
 | Heap stability | Repeated dashboard refreshes/scans do not progressively exhaust heap |
