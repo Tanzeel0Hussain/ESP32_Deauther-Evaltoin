@@ -3,7 +3,7 @@
 
 namespace DefenseConfig {
 constexpr char PROJECT_NAME[] = "ESP32 Wireless Defense Lab";
-constexpr char VERSION[] = "1.0.0";
+constexpr char VERSION[] = "1.0.1";
 
 constexpr char DEFAULT_AP_SSID[] = "ESP32-Defense-Lab";
 constexpr char DEFAULT_AP_PASSWORD[] = "defenselab";

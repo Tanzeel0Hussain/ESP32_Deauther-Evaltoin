@@ -6,7 +6,7 @@
 
 [![Firmware CI](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml/badge.svg)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml)
 [![Live Site](https://img.shields.io/badge/Live-Project_Site-29d9ff)](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/)
-[![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0)
+[![Firmware](https://img.shields.io/badge/Firmware-v1.0.1-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.1)
 [![ESP32](https://img.shields.io/badge/Target-Classic_ESP32-2c7dff)](docs/HARDWARE.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -141,7 +141,7 @@ pio device monitor -b 115200
 | ESP32 firmware compile | Automated in CI |
 | 90% flash budget | Enforced in CI |
 | Offensive modules removed from maintained main branch | Yes |
-| Browser firmware/release packaging | v1.0.0 pipeline |
+| Browser firmware/release packaging | v1.0.1 pipeline |
 | Physical ESP32 boot | Requires real hardware validation |
 | Real RF detection sensitivity | Requires controlled lab validation |
 | OLED hardware | Requires optional display hardware |
