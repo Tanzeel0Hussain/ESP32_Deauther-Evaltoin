@@ -1,179 +1,255 @@
 #include <Arduino.h>
 #include <Preferences.h>
 
+extern "C" {
+#include "esp_system.h"
+}
+
+#include "storage.h"
 #include "config.h"
 #include "crypto_store.h"
-#include "storage.h"
-#include "text_utils.h"
 
 namespace {
 Preferences prefs;
-constexpr uint8_t LOG_COUNT = DefenseConfig::MAX_LOGS;
-uint32_t bootSequence = 0;
+bool recoveryMode = false;
+String recoveryApSsid;
+String recoveryApPassword;
+String recoveryAdminPassword;
 
-String logKey(uint8_t index) {
-  return "log" + String(index);
+String randomPassword(size_t length) {
+  static const char alphabet[] =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    "abcdefghijkmnopqrstuvwxyz"
+    "23456789";
+
+  String value;
+  value.reserve(length);
+  for (size_t i = 0; i < length; ++i) {
+    value += alphabet[esp_random() % (sizeof(alphabet) - 1)];
+  }
+  return value;
 }
 
-String readProtected(const char* key, const char* fallback) {
-  const String stored = prefs.getString(key, "");
-  if (!stored.length()) return String(fallback);
+void ensureRecovery() {
+  if (recoveryApPassword.length() >= 12 && recoveryAdminPassword.length() >= 12) return;
 
-  const String plain = unprotectSecret(stored);
-  return plain.length() ? plain : String(fallback);
+  const uint64_t chipId = ESP.getEfuseMac();
+  char suffix[9];
+  snprintf(
+    suffix,
+    sizeof(suffix),
+    "%08lX",
+    static_cast<unsigned long>(chipId & 0xFFFFFFFFULL)
+  );
+
+  recoveryApSsid = "DefenseLab-Recovery-" + String(suffix).substring(4);
+  recoveryApPassword = randomPassword(16);
+  recoveryAdminPassword = randomPassword(18);
+}
+
+void enterRecovery(const char* reason) {
+  if (recoveryMode) return;
+  recoveryMode = true;
+  ensureRecovery();
+
+  Serial.println();
+  Serial.println("=== ESP32 Defense Lab recovery ===");
+  Serial.println(reason);
+  Serial.print("Recovery Wi-Fi: ");
+  Serial.println(recoveryApSsid);
+  Serial.print("Recovery Wi-Fi password: ");
+  Serial.println(recoveryApPassword);
+  Serial.println("Recovery admin username: admin");
+  Serial.print("Recovery admin password: ");
+  Serial.println(recoveryAdminPassword);
+  Serial.println("Open http://192.168.4.1");
+  Serial.println("==================================");
+}
+
+String readProtected(const char* key) {
+  const String stored = prefs.getString(key, "");
+  return stored.length() ? unprotectSecret(stored) : "";
 }
 }
 
 void storageBegin() {
-  prefs.begin("def-lab", false);
-  bootSequence = prefs.getUInt("boot_seq", 0) + 1;
-  prefs.putUInt("boot_seq", bootSequence);
+  prefs.begin("deflab", false);
 
-  const char* secretKeys[] = {"ap_pass", "admin_pass"};
-  for (const char* key : secretKeys) {
-    const String value = prefs.getString(key, "");
-    if (value.length() && !isProtectedSecret(value)) {
-      const String protectedValue = protectSecret(value);
-      if (protectedValue.length()) prefs.putString(key, protectedValue);
-    }
+  if (!prefs.getString("ap_pass", "").length()) {
+    prefs.putString("ap_pass", protectSecret(DefenseLabConfig::DEFAULT_AP_PASSWORD));
+  }
+
+  if (!prefs.getString("admin_pass", "").length()) {
+    prefs.putString("admin_pass", protectSecret(DefenseLabConfig::DEFAULT_ADMIN_PASSWORD));
+  }
+
+  if (!readProtected("ap_pass").length() || !readProtected("admin_pass").length()) {
+    enterRecovery("Stored credentials could not be decrypted.");
   }
 }
 
-String getApSsid() {
-  return prefs.getString("ap_ssid", DefenseConfig::DEFAULT_AP_SSID);
+String storageGetApSsid() {
+  if (recoveryMode) {
+    ensureRecovery();
+    return recoveryApSsid;
+  }
+  return prefs.getString("ap_ssid", DefenseLabConfig::DEFAULT_AP_SSID);
 }
 
-String getApPassword() {
-  return readProtected("ap_pass", DefenseConfig::DEFAULT_AP_PASSWORD);
+String storageGetApPassword() {
+  if (recoveryMode) {
+    ensureRecovery();
+    return recoveryApPassword;
+  }
+
+  const String value = readProtected("ap_pass");
+  if (value.length()) return value;
+
+  enterRecovery("Management Wi-Fi credential failure.");
+  return recoveryApPassword;
 }
 
-String getAdminUser() {
-  return prefs.getString("admin_user", DefenseConfig::DEFAULT_ADMIN_USER);
+String storageGetAdminUser() {
+  return recoveryMode
+    ? String("admin")
+    : prefs.getString("admin_user", DefenseLabConfig::DEFAULT_ADMIN_USER);
 }
 
-String getAdminPassword() {
-  return readProtected("admin_pass", DefenseConfig::DEFAULT_ADMIN_PASSWORD);
+String storageGetAdminPassword() {
+  if (recoveryMode) {
+    ensureRecovery();
+    return recoveryAdminPassword;
+  }
+
+  const String value = readProtected("admin_pass");
+  if (value.length()) return value;
+
+  enterRecovery("Administrator credential failure.");
+  return recoveryAdminPassword;
 }
 
-uint8_t getMonitorChannel() {
-  uint8_t channel = prefs.getUChar("channel", DefenseConfig::DEFAULT_MONITOR_CHANNEL);
-  if (channel < 1 || channel > 13) channel = DefenseConfig::DEFAULT_MONITOR_CHANNEL;
-  return channel;
-}
-
-uint16_t getAlertThreshold() {
-  uint16_t value = prefs.getUShort("threshold", DefenseConfig::DEFAULT_ALERT_THRESHOLD);
-  if (value < 3 || value > 200) value = DefenseConfig::DEFAULT_ALERT_THRESHOLD;
-  return value;
-}
-
-bool initialSetupRequired() {
+bool storageInitialSetupRequired() {
+  if (recoveryMode) return true;
   return
-    getApPassword() == DefenseConfig::DEFAULT_AP_PASSWORD ||
-    getAdminPassword() == DefenseConfig::DEFAULT_ADMIN_PASSWORD;
+    storageGetApPassword() == DefenseLabConfig::DEFAULT_AP_PASSWORD ||
+    storageGetAdminPassword() == DefenseLabConfig::DEFAULT_ADMIN_PASSWORD;
 }
 
-bool setInitialCredentials(
-  const String& apSsid,
+bool storageRecoveryRequired() {
+  return recoveryMode;
+}
+
+bool storageSetInitialCredentials(
+  const String& ssid,
   const String& apPassword,
   const String& adminUser,
   const String& adminPassword
 ) {
   if (
-    apSsid.length() == 0 || apSsid.length() > 32 ||
+    ssid.length() == 0 || ssid.length() > 32 ||
     apPassword.length() < 8 || apPassword.length() > 63 ||
     adminUser.length() == 0 || adminUser.length() > 32 ||
     adminPassword.length() < 8 || adminPassword.length() > 64 ||
     apPassword == adminPassword ||
-    apPassword == DefenseConfig::DEFAULT_AP_PASSWORD ||
-    adminPassword == DefenseConfig::DEFAULT_ADMIN_PASSWORD
-  ) {
-    return false;
-  }
+    apPassword == DefenseLabConfig::DEFAULT_AP_PASSWORD ||
+    adminPassword == DefenseLabConfig::DEFAULT_ADMIN_PASSWORD
+  ) return false;
 
   const String protectedAp = protectSecret(apPassword);
   const String protectedAdmin = protectSecret(adminPassword);
   if (!protectedAp.length() || !protectedAdmin.length()) return false;
 
-  bool ok = true;
-  ok &= prefs.putString("ap_ssid", apSsid) > 0;
-  ok &= prefs.putString("ap_pass", protectedAp) > 0;
-  ok &= prefs.putString("admin_user", adminUser) > 0;
-  ok &= prefs.putString("admin_pass", protectedAdmin) > 0;
+  const bool ok =
+    prefs.putString("ap_ssid", ssid) > 0 &&
+    prefs.putString("ap_pass", protectedAp) > 0 &&
+    prefs.putString("admin_user", adminUser) > 0 &&
+    prefs.putString("admin_pass", protectedAdmin) > 0;
+
+  if (ok) {
+    recoveryMode = false;
+    recoveryApSsid = "";
+    recoveryApPassword = "";
+    recoveryAdminPassword = "";
+  }
+
   return ok;
 }
 
-bool setMonitorChannel(uint8_t channel) {
-  if (channel < 1 || channel > 13) return false;
+bool storageSetApCredentials(const String& ssid, const String& password) {
+  if (
+    ssid.length() == 0 || ssid.length() > 32 ||
+    password.length() < 8 || password.length() > 63 ||
+    password == storageGetAdminPassword()
+  ) return false;
+
+  const String protectedValue = protectSecret(password);
+  if (!protectedValue.length()) return false;
+
+  return
+    prefs.putString("ap_ssid", ssid) > 0 &&
+    prefs.putString("ap_pass", protectedValue) > 0;
+}
+
+bool storageSetAdminCredentials(const String& username, const String& password) {
+  if (
+    username.length() == 0 || username.length() > 32 ||
+    password.length() < 8 || password.length() > 64 ||
+    password == storageGetApPassword()
+  ) return false;
+
+  const String protectedValue = protectSecret(password);
+  if (!protectedValue.length()) return false;
+
+  return
+    prefs.putString("admin_user", username) > 0 &&
+    prefs.putString("admin_pass", protectedValue) > 0;
+}
+
+uint8_t storageGetMonitorChannel() {
+  uint8_t channel = prefs.getUChar("channel", DefenseLabConfig::DEFAULT_MONITOR_CHANNEL);
+  if (
+    channel < DefenseLabConfig::MIN_MONITOR_CHANNEL ||
+    channel > DefenseLabConfig::MAX_MONITOR_CHANNEL
+  ) channel = DefenseLabConfig::DEFAULT_MONITOR_CHANNEL;
+  return channel;
+}
+
+bool storageSetMonitorChannel(uint8_t channel) {
+  if (
+    channel < DefenseLabConfig::MIN_MONITOR_CHANNEL ||
+    channel > DefenseLabConfig::MAX_MONITOR_CHANNEL
+  ) return false;
   return prefs.putUChar("channel", channel) > 0;
 }
 
-bool setAlertThreshold(uint16_t threshold) {
-  if (threshold < 3 || threshold > 200) return false;
+uint16_t storageGetAlertThreshold() {
+  uint16_t threshold = prefs.getUShort("threshold", DefenseLabConfig::DEFAULT_ALERT_THRESHOLD);
+  if (
+    threshold < DefenseLabConfig::MIN_ALERT_THRESHOLD ||
+    threshold > DefenseLabConfig::MAX_ALERT_THRESHOLD
+  ) threshold = DefenseLabConfig::DEFAULT_ALERT_THRESHOLD;
+  return threshold;
+}
+
+bool storageSetAlertThreshold(uint16_t threshold) {
+  if (
+    threshold < DefenseLabConfig::MIN_ALERT_THRESHOLD ||
+    threshold > DefenseLabConfig::MAX_ALERT_THRESHOLD
+  ) return false;
   return prefs.putUShort("threshold", threshold) > 0;
 }
 
-void appendEventLog(const String& type, const String& message) {
-  uint8_t head = prefs.getUChar("log_head", 0);
-  uint8_t count = prefs.getUChar("log_count", 0);
-
-  String safeType = type;
-  String safeMessage = message;
-  safeType.replace("|", "/");
-  safeMessage.replace("|", "/");
-  safeMessage.replace("\n", " ");
-  safeMessage.replace("\r", " ");
-
-  const String entry =
-    String(bootSequence) + "|" +
-    String(millis() / 1000UL) + "|" +
-    safeType + "|" +
-    safeMessage;
-
-  prefs.putString(logKey(head).c_str(), entry);
-  head = static_cast<uint8_t>((head + 1) % LOG_COUNT);
-  if (count < LOG_COUNT) ++count;
-  prefs.putUChar("log_head", head);
-  prefs.putUChar("log_count", count);
-}
-
-String getEventLogJson() {
-  const uint8_t head = prefs.getUChar("log_head", 0);
-  const uint8_t count = prefs.getUChar("log_count", 0);
-
-  String json = "[";
-  for (uint8_t i = 0; i < count; ++i) {
-    const int index = (head + LOG_COUNT - count + i) % LOG_COUNT;
-    const String entry = prefs.getString(logKey(index).c_str(), "");
-
-    int p1 = entry.indexOf('|');
-    int p2 = entry.indexOf('|', p1 + 1);
-    int p3 = entry.indexOf('|', p2 + 1);
-    if (p1 < 0 || p2 < 0 || p3 < 0) continue;
-
-    if (json.length() > 1) json += ",";
-    json += "{\"boot\":" + entry.substring(0, p1);
-    json += ",\"seconds\":" + entry.substring(p1 + 1, p2);
-    json += ",\"type\":\"" + DefenseText::jsonEscape(entry.substring(p2 + 1, p3)) + "\"";
-    json += ",\"message\":\"" + DefenseText::jsonEscape(entry.substring(p3 + 1)) + "\"}";
-  }
-  return json + "]";
-}
-
-void clearEventLogs() {
-  for (uint8_t i = 0; i < LOG_COUNT; ++i) {
-    prefs.remove(logKey(i).c_str());
-  }
-  prefs.putUChar("log_head", 0);
-  prefs.putUChar("log_count", 0);
-}
-
-void factoryResetStorage() {
+void storageFactoryReset() {
   prefs.clear();
 
   Preferences secure;
-  if (secure.begin("def-sec", false)) {
+  if (secure.begin("defsec", false)) {
     secure.clear();
     secure.end();
   }
+
+  recoveryMode = false;
+  recoveryApSsid = "";
+  recoveryApPassword = "";
+  recoveryAdminPassword = "";
 }
