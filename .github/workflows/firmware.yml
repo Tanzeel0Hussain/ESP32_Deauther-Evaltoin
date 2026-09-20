@@ -8,18 +8,28 @@ on:
       - "tests/**"
       - "platformio.ini"
       - ".github/workflows/firmware.yml"
+      - ".github/releases/**"
+      - "VERSION"
+      - "manifest.json"
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: esp32-defense-firmware-\${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
@@ -51,29 +61,120 @@ jobs:
           PY
 
       - name: Prepare firmware artifacts
+        shell: bash
         run: |
           set -euo pipefail
           BUILD=".pio/build/esp32dev"
-          OUT="dist"
+          OUT="docs/firmware"
           mkdir -p "$OUT"
+
           BOOT_APP="$BUILD/boot_app0.bin"
           if [ ! -f "$BOOT_APP" ]; then
             BOOT_APP="$(find ~/.platformio/packages -name boot_app0.bin -type f | head -n 1)"
           fi
+
+          test -f "$BUILD/bootloader.bin"
+          test -f "$BUILD/partitions.bin"
+          test -f "$BUILD/firmware.bin"
+          test -n "$BOOT_APP"
+          test -f "$BOOT_APP"
+
           cp "$BUILD/bootloader.bin" "$OUT/bootloader.bin"
           cp "$BUILD/partitions.bin" "$OUT/partitions.bin"
           cp "$BOOT_APP" "$OUT/boot_app0.bin"
           cp "$BUILD/firmware.bin" "$OUT/firmware.bin"
+          cp "$BUILD/firmware.bin" "$OUT/esp32-defense-lab-ota.bin"
+
           python -m esptool --chip esp32 merge-bin \
-            --flash-mode dio --flash-size 4MB \
+            --flash-mode dio \
+            --flash-size 4MB \
             --output "$OUT/esp32-defense-lab-full.bin" \
             0x1000 "$OUT/bootloader.bin" \
             0x8000 "$OUT/partitions.bin" \
             0xe000 "$OUT/boot_app0.bin" \
             0x10000 "$OUT/firmware.bin"
-          sha256sum "$OUT/esp32-defense-lab-full.bin" "$OUT/firmware.bin" > "$OUT/SHA256SUMS.txt"
+
+          (
+            cd "$OUT"
+            sha256sum \
+              esp32-defense-lab-full.bin \
+              esp32-defense-lab-ota.bin \
+              > SHA256SUMS.txt
+          )
 
       - uses: actions/upload-artifact@v7
         with:
-          name: esp32-defense-lab-firmware
-          path: dist/
+          name: esp32-defense-lab-\${{ github.sha }}
+          path: |
+            docs/firmware/esp32-defense-lab-full.bin
+            docs/firmware/esp32-defense-lab-ota.bin
+            docs/firmware/SHA256SUMS.txt
+            docs/firmware/bootloader.bin
+            docs/firmware/partitions.bin
+            docs/firmware/boot_app0.bin
+            docs/firmware/firmware.bin
+
+      - name: Publish stable browser firmware
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f docs/firmware/*.bin docs/firmware/SHA256SUMS.txt
+
+          if ! git diff --cached --quiet; then
+            git commit -m "build: publish ESP32 Defense Lab firmware [skip ci]"
+          fi
+
+          git pull --rebase origin main
+          git push
+
+      - name: Create immutable release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
+        env:
+          GH_TOKEN: \${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::VERSION must use semantic versioning."
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          git fetch --tags origin
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists. Bump VERSION instead of overwriting a release."
+            exit 1
+          fi
+
+          git tag -a "$TAG" -m "ESP32 Wireless Defense Lab $TAG"
+          git push origin "$TAG"
+
+          NOTES=".github/releases/$TAG.md"
+
+          if [ -f "$NOTES" ]; then
+            gh release create "$TAG" \
+              --verify-tag \
+              --title "ESP32 Wireless Defense Lab $TAG" \
+              --notes-file "$NOTES" \
+              --latest \
+              docs/firmware/esp32-defense-lab-full.bin \
+              docs/firmware/esp32-defense-lab-ota.bin \
+              docs/firmware/SHA256SUMS.txt
+          else
+            gh release create "$TAG" \
+              --verify-tag \
+              --title "ESP32 Wireless Defense Lab $TAG" \
+              --generate-notes \
+              --latest \
+              docs/firmware/esp32-defense-lab-full.bin \
+              docs/firmware/esp32-defense-lab-ota.bin \
+              docs/firmware/SHA256SUMS.txt
+          fi
