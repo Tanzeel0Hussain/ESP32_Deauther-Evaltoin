@@ -1,4 +1,4 @@
 #pragma once
 
-void defenseWebBegin();
-void defenseWebLoop();
+void webAdminBegin();
+void webAdminLoop();

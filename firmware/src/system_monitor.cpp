@@ -39,19 +39,8 @@ void systemMonitorBegin() {
     resetReason(esp_reset_reason())
   );
 
-  esp_task_wdt_config_t config = {
-    .timeout_ms = 15000,
-    .idle_core_mask =
-      (1U << portNUM_PROCESSORS) - 1U,
-    .trigger_panic = true
-  };
-
   esp_err_t result =
-    esp_task_wdt_reconfigure(&config);
-
-  if (result == ESP_ERR_INVALID_STATE) {
-    result = esp_task_wdt_init(&config);
-  }
+    esp_task_wdt_init(15, true);
 
   if (
     result == ESP_OK ||
