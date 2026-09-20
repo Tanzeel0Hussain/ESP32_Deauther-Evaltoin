@@ -1,0 +1,79 @@
+name: Build ESP32 Defense Firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - "tests/**"
+      - "platformio.ini"
+      - ".github/workflows/firmware.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PlatformIO
+        run: pip install platformio esptool
+
+      - name: Run host detector tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            -Ifirmware/include \
+            tests/detection_logic_test.cpp \
+            -o /tmp/defense-tests
+          /tmp/defense-tests
+
+      - name: Build firmware
+        run: pio run -e esp32dev
+
+      - name: Check flash budget
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          size = Path(".pio/build/esp32dev/firmware.bin").stat().st_size
+          limit = 1310720
+          print("Firmware:", size, "bytes", f"({size/limit:.1%} of app partition)")
+          if size > int(limit * 0.90):
+              raise SystemExit("Firmware exceeds 90% app-partition budget")
+          PY
+
+      - name: Prepare firmware artifacts
+        run: |
+          set -euo pipefail
+          BUILD=".pio/build/esp32dev"
+          OUT="dist"
+          mkdir -p "$OUT"
+          BOOT_APP="$BUILD/boot_app0.bin"
+          if [ ! -f "$BOOT_APP" ]; then
+            BOOT_APP="$(find ~/.platformio/packages -name boot_app0.bin -type f | head -n 1)"
+          fi
+          cp "$BUILD/bootloader.bin" "$OUT/bootloader.bin"
+          cp "$BUILD/partitions.bin" "$OUT/partitions.bin"
+          cp "$BOOT_APP" "$OUT/boot_app0.bin"
+          cp "$BUILD/firmware.bin" "$OUT/firmware.bin"
+          python -m esptool --chip esp32 merge-bin \
+            --flash-mode dio --flash-size 4MB \
+            --output "$OUT/esp32-defense-lab-full.bin" \
+            0x1000 "$OUT/bootloader.bin" \
+            0x8000 "$OUT/partitions.bin" \
+            0xe000 "$OUT/boot_app0.bin" \
+            0x10000 "$OUT/firmware.bin"
+          sha256sum "$OUT/esp32-defense-lab-full.bin" "$OUT/firmware.bin" > "$OUT/SHA256SUMS.txt"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: esp32-defense-lab-firmware
+          path: dist/
