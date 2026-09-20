@@ -127,7 +127,7 @@ jobs:
       - name: Upload firmware artifact
         uses: actions/upload-artifact@v7
         with:
-          name: esp32-defense-lab-${{ github.ref_name }}-firmware
+          name: esp32-defense-lab-${{ github.run_id }}-firmware
           path: |
             docs/firmware/esp32-defense-lab-full.bin
             docs/firmware/esp32-defense-lab-app.bin
