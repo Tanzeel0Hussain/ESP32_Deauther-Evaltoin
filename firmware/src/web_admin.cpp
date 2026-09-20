@@ -206,23 +206,23 @@ refreshAll();setInterval(()=>Promise.all([loadStatus(),loadAlerts(),loadChannels
 
 String statusJson() {
   String json = "{";
-  json += "\\"project\\":\\"" + String(DefenseConfig::PROJECT_NAME) + "\\"";
-  json += ",\\"version\\":\\"" + String(DefenseConfig::VERSION) + "\\"";
-  json += ",\\"ip\\":\\"" + WiFi.softAPIP().toString() + "\\"";
-  json += ",\\"chip\\":\\"" + DefenseText::jsonEscape(ESP.getChipModel()) + "\\"";
-  json += ",\\"revision\\":" + String(ESP.getChipRevision());
-  json += ",\\"freeHeap\\":" + String(ESP.getFreeHeap());
-  json += ",\\"uptimeSeconds\\":" + String(millis() / 1000UL);
-  json += ",\\"monitorChannel\\":" + String(getMonitorChannel());
-  json += ",\\"threshold\\":" + String(getAlertThreshold());
-  json += ",\\"networks\\":" + String(wifiScannerCount());
-  json += ",\\"openNetworks\\":" + String(wifiScannerOpenCount());
-  json += ",\\"strongestRssi\\":" + String(wifiScannerStrongestRssi());
-  json += ",\\"deauth\\":" + String(detectorTotalDeauth());
-  json += ",\\"disassoc\\":" + String(detectorTotalDisassoc());
-  json += ",\\"alerts\\":" + String(detectorAlertCount());
-  json += ",\\"lastRssi\\":" + String(detectorLastRssi());
-  json += ",\\"lastChannel\\":" + String(detectorLastChannel());
+  json += "\"project\":\"" + String(DefenseConfig::PROJECT_NAME) + "\"";
+  json += ",\"version\":\"" + String(DefenseConfig::VERSION) + "\"";
+  json += ",\"ip\":\"" + WiFi.softAPIP().toString() + "\"";
+  json += ",\"chip\":\"" + DefenseText::jsonEscape(ESP.getChipModel()) + "\"";
+  json += ",\"revision\":" + String(ESP.getChipRevision());
+  json += ",\"freeHeap\":" + String(ESP.getFreeHeap());
+  json += ",\"uptimeSeconds\":" + String(millis() / 1000UL);
+  json += ",\"monitorChannel\":" + String(getMonitorChannel());
+  json += ",\"threshold\":" + String(getAlertThreshold());
+  json += ",\"networks\":" + String(wifiScannerCount());
+  json += ",\"openNetworks\":" + String(wifiScannerOpenCount());
+  json += ",\"strongestRssi\":" + String(wifiScannerStrongestRssi());
+  json += ",\"deauth\":" + String(detectorTotalDeauth());
+  json += ",\"disassoc\":" + String(detectorTotalDisassoc());
+  json += ",\"alerts\":" + String(detectorAlertCount());
+  json += ",\"lastRssi\":" + String(detectorLastRssi());
+  json += ",\"lastChannel\":" + String(detectorLastChannel());
   json += "}";
   return json;
 }
@@ -303,7 +303,7 @@ void webAdminBegin() {
     server.send(
       ok ? 200 : 500,
       "application/json",
-      ok ? wifiScannerJson() : "{\\"error\\":\\"scan failed\\"}"
+      ok ? wifiScannerJson() : "{\"error\":\"scan failed\"}"
     );
   });
 
@@ -331,7 +331,7 @@ void webAdminBegin() {
 
     detectorUpdateThreshold(static_cast<uint16_t>(threshold));
     appendEventLog("settings", "Monitor channel/threshold updated");
-    server.send(200, "application/json", "{\\"ok\\":true}");
+    server.send(200, "application/json", "{\"ok\":true}");
 
     if (channelChanged) scheduleRestart();
   });
@@ -362,32 +362,32 @@ void webAdminBegin() {
     if (!requireAdmin()) return;
     detectorReset();
     appendEventLog("detector", "Passive detector counters cleared");
-    server.send(200, "application/json", "{\\"ok\\":true}");
+    server.send(200, "application/json", "{\"ok\":true}");
   });
 
   server.on("/logs/clear", HTTP_POST, []() {
     if (!requireAdmin()) return;
     clearEventLogs();
     appendEventLog("system", "Event log cleared");
-    server.send(200, "application/json", "{\\"ok\\":true}");
+    server.send(200, "application/json", "{\"ok\":true}");
   });
 
   server.on("/system/restart", HTTP_POST, []() {
     if (!requireAdmin()) return;
     appendEventLog("system", "Manual restart requested");
-    server.send(200, "application/json", "{\\"ok\\":true}");
+    server.send(200, "application/json", "{\"ok\":true}");
     scheduleRestart();
   });
 
   server.on("/system/factory-reset", HTTP_POST, []() {
     if (!requireAdmin()) return;
     factoryResetStorage();
-    server.send(200, "application/json", "{\\"ok\\":true}");
+    server.send(200, "application/json", "{\"ok\":true}");
     scheduleRestart();
   });
 
   server.on("/health", HTTP_GET, []() {
-    server.send(200, "application/json", "{\\"status\\":\\"ok\\",\\"mode\\":\\"passive-defense\\"}");
+    server.send(200, "application/json", "{\"status\":\"ok\",\"mode\":\"passive-defense\"}");
   });
 
   server.onNotFound([]() {
