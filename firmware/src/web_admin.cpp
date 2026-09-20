@@ -5,6 +5,7 @@
 
 #include "config.h"
 #include "detector.h"
+#include "input_validation.h"
 #include "storage.h"
 #include "text_utils.h"
 #include "web_admin.h"
@@ -138,7 +139,7 @@ canvas{width:100%;height:180px;background:#06131f;border-radius:12px}
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 @media(max-width:480px){main{padding:14px}.grid{grid-template-columns:1fr 1fr}.metric b{font-size:1.35rem}}
 </style></head><body><main>
-<div class="top"><div class="brand"><small>PASSIVE WIRELESS DEFENSE</small><h1>ESP32 Wireless Defense Lab</h1><div class="muted">Local monitor · no frame injection · no credential capture</div></div><div class="pill"><span class="status-dot"></span>Monitor active</div></div>
+<div class="top"><div class="brand"><small>PASSIVE WIRELESS DEFENSE</small><h1>ESP32 Wireless Defense Lab</h1><div class="muted">Local monitor · no frame injection · no credential capture</div></div><div class="pill" id="monitorPill"><span class="status-dot"></span><span id="monitorText">Checking monitor…</span></div></div>
 <div class="grid">
 <section class="card metric"><span class="muted">Deauth frames</span><b id="deauth">0</b></section>
 <section class="card metric"><span class="muted">Disassoc frames</span><b id="disassoc">0</b></section>
@@ -157,7 +158,7 @@ canvas{width:100%;height:180px;background:#06131f;border-radius:12px}
 </section>
 </div>
 <div class="two">
-<section class="card"><h3>Nearby Wi-Fi Inventory</h3><div class="actions"><button onclick="scan()">Scan Networks</button></div><div class="table-wrap"><table><thead><tr><th>SSID</th><th>BSSID</th><th>RSSI</th><th>Channel</th><th>Security</th></tr></thead><tbody id="networks"></tbody></table></div></section>
+<section class="card"><h3>Nearby Wi-Fi Inventory</h3><div class="actions"><button id="scanButton" onclick="scan()">Scan Networks</button></div><p id="scanStatus" class="muted">A full 2.4 GHz scan may briefly pause the management connection on this single-radio ESP32.</p><div class="table-wrap"><table><thead><tr><th>SSID</th><th>BSSID</th><th>RSSI</th><th>Channel</th><th>Security</th></tr></thead><tbody id="networks"></tbody></table></div></section>
 <section class="card"><h3>Channel Event Activity</h3><canvas id="chart" width="600" height="220"></canvas><p class="muted">Counts only observed deauthentication/disassociation management frames. It is not a full spectrum analyzer.</p></section>
 </div>
 <div class="two">
@@ -192,12 +193,12 @@ const esc=s=>String(s??'');
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json()}
 async function post(path,data={}){data.csrf=csrf;const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});if(!r.ok){alert(await r.text());return false}if(r.redirected)location.href=r.url;return true}
 function td(tr,text,cls=''){const d=document.createElement('td');d.textContent=esc(text);if(cls)d.className=cls;tr.appendChild(d)}
-async function loadStatus(){const s=await api('/api/status');$('deauth').textContent=s.deauth;$('disassoc').textContent=s.disassoc;$('alertCount').textContent=s.alerts;$('networkCount').textContent=s.networks;$('channel').value=s.monitorChannel;$('threshold').value=s.threshold;$('device').textContent=s.chip+' · rev '+s.revision+' · free heap '+s.freeHeap+' B · uptime '+s.uptimeSeconds+'s · dropped alert queue '+s.droppedAlerts+' · IP '+s.ip;}
-async function loadAlerts(){const data=await api('/api/alerts');const body=$('alerts');body.textContent='';data.forEach(a=>{const tr=document.createElement('tr');td(tr,a.seconds+'s');td(tr,a.type,'alert');td(tr,a.bssid+' / '+a.source);td(tr,a.channel);td(tr,a.rssi+' dBm');td(tr,a.burst);td(tr,a.reason);body.appendChild(tr)})}
+async function loadStatus(){const s=await api('/api/status');$('deauth').textContent=s.deauth;$('disassoc').textContent=s.disassoc;$('alertCount').textContent=s.alerts;$('networkCount').textContent=s.networks;$('channel').value=s.monitorChannel;$('threshold').value=s.threshold;const monitor=$('monitorText');const pill=$('monitorPill');monitor.textContent=s.detectorStatus==='active'?'Monitor active':s.detectorStatus==='paused'?'Monitor paused':'Monitor '+s.detectorStatus+(s.detectorError?' · error '+s.detectorError:'');pill.className='pill '+(s.detectorHealthy?'':s.detectorStatus==='paused'?'warn':'alert');$('device').textContent=s.chip+' · rev '+s.revision+' · free heap '+s.freeHeap+' B · uptime '+s.uptimeSeconds+'s · dropped alert queue '+s.droppedAlerts+' · IP '+s.ip;const scanState=$('scanStatus');if(!s.scanActive){scanState.textContent=s.scanStatus==='error'?'Last scan failed (error '+s.lastScanError+'). Monitor/channel restoration was checked.':s.scanStatus==='ok'?'Last scan completed and monitor channel was restored.':'A full 2.4 GHz scan may briefly pause the management connection on this single-radio ESP32.';}}
+async function loadAlerts(){const data=await api('/api/alerts');const body=$('alerts');body.textContent='';data.forEach(a=>{const tr=document.createElement('tr');td(tr,a.seconds+'s');td(tr,a.type,'alert');td(tr,a.bssid+' / '+a.source);td(tr,a.channel);td(tr,a.rssi+' dBm');td(tr,a.burst);td(tr,a.protected?'Protected / unavailable':a.reason);body.appendChild(tr)})}
 async function loadNetworks(){const data=await api('/api/networks');const body=$('networks');body.textContent='';data.sort((a,b)=>b.rssi-a.rssi).forEach(n=>{const tr=document.createElement('tr');td(tr,n.ssid||'(hidden)');td(tr,n.bssid);td(tr,n.rssi+' dBm');td(tr,n.channel);td(tr,n.security,n.security==='Open'?'warn':'');body.appendChild(tr)})}
 async function loadChannels(){const data=await api('/api/channels');const c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);const max=Math.max(1,...data.map(v=>v.events));data.forEach((v,i)=>{const bw=w/13-7,bh=(v.events/max)*(h-35),left=i*(w/13)+4;x.fillStyle='#2c7dff';x.fillRect(left,h-bh-22,bw,bh);x.fillStyle='#9fc3d7';x.font='12px system-ui';x.fillText(String(v.channel),left+bw/3,h-6)});}
 async function loadLogs(){const data=await api('/api/logs');const box=$('logs');box.textContent='';[...data].reverse().forEach(l=>{const p=document.createElement('div');p.style.padding='7px 0';p.style.borderBottom='1px solid #173247';p.textContent='boot '+l.boot+' · +'+l.seconds+'s · '+l.type+': '+l.message;box.appendChild(p)})}
-async function scan(){const ok=await post('/scan');if(ok){await loadNetworks();await loadStatus()}}
+async function scan(){const button=$('scanButton'),state=$('scanStatus');button.disabled=true;button.textContent='Scanning…';state.textContent='Scanning… management connection may pause briefly while the radio visits channels 1–13.';try{const ok=await post('/scan');if(ok){await loadNetworks()}await loadStatus()}finally{button.disabled=false;button.textContent='Scan Networks'}}
 async function saveSettings(){const ok=await post('/settings',{channel:$('channel').value,threshold:$('threshold').value});if(ok)alert('Settings saved. If the channel changed, reconnect after restart.')}
 async function saveCredentials(){
   if(!$('apPass').value||!$('adminPass').value){alert('Enter both a new Wi-Fi password and a new admin password.');return}
@@ -236,6 +237,18 @@ String statusJson() {
   json += ",\"droppedAlerts\":" + String(detectorDroppedAlerts());
   json += ",\"lastRssi\":" + String(detectorLastRssi());
   json += ",\"lastChannel\":" + String(detectorLastChannel());
+  json += ",\"detectorHealthy\":" + String(detectorHealthy() ? "true" : "false");
+  json += ",\"detectorStatus\":\"" + detectorStatus() + "\"";
+  json += ",\"detectorError\":" + String(detectorLastError());
+  json += ",\"scanActive\":" + String(wifiScannerScanning() ? "true" : "false");
+  json += ",\"scanStatus\":\"" + wifiScannerStatus() + "\"";
+  json += ",\"lastScanOk\":" + String(wifiScannerLastOk() ? "true" : "false");
+  json += ",\"lastScanError\":" + String(wifiScannerLastError());
+  if (wifiScannerLastScanMs()) {
+    json += ",\"lastScanSecondsAgo\":" + String((millis() - wifiScannerLastScanMs()) / 1000UL);
+  } else {
+    json += ",\"lastScanSecondsAgo\":null";
+  }
   json += "}";
   return json;
 }
@@ -323,11 +336,26 @@ void webAdminBegin() {
   server.on("/settings", HTTP_POST, []() {
     if (!requireAdmin()) return;
 
-    const int channel = server.arg("channel").toInt();
-    const int threshold = server.arg("threshold").toInt();
+    const String channelArg = server.arg("channel");
+    const String thresholdArg = server.arg("threshold");
+    uint32_t channel = 0;
+    uint32_t threshold = 0;
 
-    if (channel < 1 || channel > 13 || threshold < 3 || threshold > 200) {
-      server.send(400, "text/plain", "Channel must be 1-13 and threshold 3-200.");
+    if (
+      !DefenseValidation::parseUnsignedDecimal(
+        channelArg.c_str(),
+        1,
+        13,
+        channel
+      ) ||
+      !DefenseValidation::parseUnsignedDecimal(
+        thresholdArg.c_str(),
+        3,
+        200,
+        threshold
+      )
+    ) {
+      server.send(400, "text/plain", "Channel must be a strict integer from 1-13 and threshold a strict integer from 3-200.");
       return;
     }
 
@@ -427,7 +455,13 @@ void webAdminBegin() {
   });
 
   server.on("/health", HTTP_GET, []() {
-    server.send(200, "application/json", "{\"status\":\"ok\",\"mode\":\"passive-defense\"}");
+    const bool healthy = detectorHealthy();
+    String json = "{\"status\":\"";
+    json += healthy ? "ok" : "degraded";
+    json += "\",\"mode\":\"passive-defense\",\"detector\":\"";
+    json += detectorStatus();
+    json += "\",\"detectorError\":" + String(detectorLastError()) + "}";
+    server.send(healthy ? 200 : 503, "application/json", json);
   });
 
   server.onNotFound([]() {
