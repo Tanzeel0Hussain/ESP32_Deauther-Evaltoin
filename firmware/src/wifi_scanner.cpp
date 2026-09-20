@@ -50,8 +50,8 @@ bool wifiScannerRun() {
   const int found = WiFi.scanNetworks(
     false,
     true,
-    false,
-    120
+    true,
+    180
   );
 
   if (found < 0) {

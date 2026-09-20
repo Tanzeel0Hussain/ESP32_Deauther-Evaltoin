@@ -23,7 +23,7 @@ The oldest source-tracking slot is reused when the table is full.
 
 Classic ESP32 has one 2.4 GHz radio. Normal monitoring therefore covers one configured channel at a time, shared with the local management AP.
 
-A manual nearby-network inventory scan temporarily pauses passive monitoring, surveys the 2.4 GHz channels, restores the configured monitor channel and resumes the detector.
+A manual nearby-network inventory scan temporarily pauses fixed-channel monitoring, performs a passive 2.4 GHz scan without active probe requests, restores the configured monitor channel and resumes the detector.
 
 ## Interpreting an alert
 

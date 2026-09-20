@@ -116,6 +116,14 @@ String readProtected(
     prefs.getString(key, "");
 
   if (!stored.length()) {
+    if (prefs.getBool("setup_done", false)) {
+      enterRecoveryMode(failureReason);
+
+      return String(key) == "ap_pass"
+        ? recoveryApPassword
+        : recoveryAdminPassword;
+    }
+
     return String(fallback);
   }
 
@@ -142,10 +150,80 @@ void storageBegin() {
   const char* secretKeys[] = {"ap_pass", "admin_pass"};
   for (const char* key : secretKeys) {
     const String value = prefs.getString(key, "");
+
     if (value.length() && !isProtectedSecret(value)) {
-      const String protectedValue = protectSecret(value);
-      if (protectedValue.length()) prefs.putString(key, protectedValue);
+      const String protectedValue =
+        protectSecret(value);
+
+      if (protectedValue.length()) {
+        prefs.putString(
+          key,
+          protectedValue
+        );
+      }
     }
+  }
+
+  const String storedAp =
+    prefs.getString("ap_pass", "");
+
+  const String storedAdmin =
+    prefs.getString("admin_pass", "");
+
+  bool setupDone =
+    prefs.getBool("setup_done", false);
+
+  // Upgrade compatibility: releases before setup_done existed
+  // always stored both passwords together after first setup.
+  if (
+    !setupDone &&
+    storedAp.length() &&
+    storedAdmin.length()
+  ) {
+    const String ap =
+      unprotectSecret(storedAp);
+
+    const String admin =
+      unprotectSecret(storedAdmin);
+
+    if (
+      ap.length() &&
+      admin.length() &&
+      ap != DefenseConfig::DEFAULT_AP_PASSWORD &&
+      admin != DefenseConfig::DEFAULT_ADMIN_PASSWORD
+    ) {
+      setupDone =
+        prefs.putBool(
+          "setup_done",
+          true
+        ) > 0;
+    }
+  }
+
+  if (setupDone) {
+    const bool protectedFormat =
+      isProtectedSecret(storedAp) &&
+      isProtectedSecret(storedAdmin);
+
+    const bool decrypts =
+      storedAp.length() &&
+      storedAdmin.length() &&
+      unprotectSecret(storedAp).length() &&
+      unprotectSecret(storedAdmin).length();
+
+    if (!protectedFormat || !decrypts) {
+      enterRecoveryMode(
+        "Provisioned management credentials are missing, unprotected, or could not be decrypted."
+      );
+    }
+  } else if (
+    storedAp.length() !=
+    storedAdmin.length()
+  ) {
+    // A partial credential write is not a valid first-boot state.
+    enterRecoveryMode(
+      "Incomplete management credential state detected."
+    );
   }
 }
 
@@ -205,9 +283,15 @@ uint16_t getAlertThreshold() {
 bool initialSetupRequired() {
   if (recoveryMode) return true;
 
+  if (!prefs.getBool("setup_done", false)) {
+    return true;
+  }
+
   return
-    getApPassword() == DefenseConfig::DEFAULT_AP_PASSWORD ||
-    getAdminPassword() == DefenseConfig::DEFAULT_ADMIN_PASSWORD;
+    getApPassword() ==
+      DefenseConfig::DEFAULT_AP_PASSWORD ||
+    getAdminPassword() ==
+      DefenseConfig::DEFAULT_ADMIN_PASSWORD;
 }
 
 bool setInitialCredentials(
@@ -239,10 +323,22 @@ bool setInitialCredentials(
   ok &= prefs.putString("admin_pass", protectedAdmin) > 0;
 
   if (ok) {
+    ok &=
+      prefs.putBool(
+        "setup_done",
+        true
+      ) > 0;
+  }
+
+  if (ok) {
     recoveryMode = false;
     recoveryApSsid = "";
     recoveryApPassword = "";
     recoveryAdminPassword = "";
+  } else {
+    enterRecoveryMode(
+      "Management credential update was incomplete."
+    );
   }
 
   return ok;

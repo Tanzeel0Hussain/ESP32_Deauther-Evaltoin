@@ -1,6 +1,6 @@
 # Architecture
 
-ESP32 Wireless Defense Lab is a defensive, receive-only wireless visibility project for classic ESP32.
+ESP32 Wireless Defense Lab is a defensive wireless visibility project for classic ESP32. Its detection path is receive-only and does not use raw 802.11 frame injection.
 
 ## Runtime data flow
 
@@ -39,7 +39,7 @@ dashboard request
 pause promiscuous RX
       │
       ▼
-WiFi.scanNetworks()
+WiFi.scanNetworks(passive=true)
       │
       ├─ SSID / BSSID
       ├─ RSSI
@@ -70,3 +70,8 @@ Classic ESP32 has one 2.4 GHz radio, so the management AP and passive monitor sh
 The maintained firmware does not implement deauthentication/disassociation transmission, access-point impersonation, credential capture, WPA/PMKID harvesting, beacon/BLE flooding, or HID injection.
 
 CI also scans maintained firmware source and fails if the ESP32 raw 802.11 transmit API `esp_wifi_80211_tx` or offensive credential-harvesting implementation markers appear.
+
+
+## Radio-transmission scope
+
+“Receive-only” describes the **detection path**. The ESP32 management access point still performs ordinary standards-compliant Wi-Fi transmissions required for local administration. The maintained firmware does not transmit forged deauthentication/disassociation frames or other attack traffic.

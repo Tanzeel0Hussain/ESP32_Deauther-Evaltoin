@@ -14,7 +14,7 @@
 
 ## What this project is
 
-**ESP32 Wireless Defense Lab** is a defensive, receive-only Wi-Fi monitoring project for classic ESP32 boards. It observes nearby 2.4 GHz Wi-Fi metadata and selected 802.11 management frames, then presents useful visibility through a secure local dashboard.
+**ESP32 Wireless Defense Lab** is a defensive Wi-Fi monitoring project for classic ESP32 boards with a receive-only detection path. It observes nearby 2.4 GHz Wi-Fi metadata and selected 802.11 management frames, then presents useful visibility through a secure local dashboard.
 
 The maintained firmware is intentionally defensive. It does **not** include deauthentication transmission, Evil Twin access-point impersonation, credential collection, beacon flooding, handshake/PMKID harvesting, BLE spam, or HID payload modules.
 
@@ -65,11 +65,11 @@ The ESP32 enables promiscuous **receive** mode with a management-frame filter. I
 
 An alert means **suspicious management-frame activity was observed**. It is not proof that a specific device is malicious, because MAC addresses can be spoofed and legitimate infrastructure may also emit management frames.
 
-The firmware never calls an 802.11 transmit/injection routine for attack traffic.
+The detector never calls an 802.11 raw transmit/injection routine. The local management AP still performs normal standards-compliant Wi-Fi transmissions such as beacons and responses.
 
 ## Single-radio limitation
 
-Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network scan temporarily leaves the selected channel and the firmware restores the configured monitor channel afterward.
+Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network inventory scan uses passive scanning, temporarily leaves the selected channel, and the firmware restores the configured monitor channel afterward.
 
 This is a compact lab/defensive visibility device, not a multi-radio enterprise WIDS.
 
