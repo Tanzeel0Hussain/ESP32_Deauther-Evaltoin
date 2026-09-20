@@ -33,7 +33,7 @@ The maintained firmware is intentionally defensive. It does **not** include deau
 | First boot | Mandatory replacement of public setup credentials |
 | Event history | Reset reasons, scans, settings changes and detector events |
 | OLED | Optional SSD1306 128×64 status display on GPIO 21/22 |
-| Reliability | Task watchdog, NVS persistence, factory reset |
+| Reliability | Checked detector/scan health, channel restore verification, full 16-entry alert queue, task watchdog, NVS persistence and factory reset |
 | Quality | Pinned PlatformIO tooling, expanded host logic tests, repo-wide defensive guard, flash-size budget in GitHub Actions |
 
 ## Start here
