@@ -1,10 +1,30 @@
 #include <Arduino.h>
+#include <WiFi.h>
 
 #include "storage.h"
-#include "wifi_scanner.h"
-#include "frame_monitor.h"
-#include "oled_display.h"
+#include "scanner.h"
+#include "detector.h"
+#include "display.h"
 #include "web_admin.h"
+
+namespace {
+void startManagementAp() {
+  IPAddress ip(192, 168, 4, 1);
+  IPAddress mask(255, 255, 255, 0);
+
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  WiFi.softAPConfig(ip, ip, mask);
+
+  WiFi.softAP(
+    getApSsid().c_str(),
+    getApPassword().c_str(),
+    getMonitorChannel(),
+    false,
+    4
+  );
+}
+}
 
 void setup() {
   Serial.begin(115200);
@@ -12,22 +32,31 @@ void setup() {
 
   Serial.println();
   Serial.println("ESP32 Wireless Defense Lab");
-  Serial.println("Passive monitoring firmware");
+  Serial.println("Defensive passive monitor");
 
   storageBegin();
-  wifiScannerBegin();
-  frameMonitorBegin();
-  oledDisplayBegin();
+  startManagementAp();
+
+  detectorSetChannel(getMonitorChannel());
+
+  scannerBegin();
+  detectorBegin();
+  displayBegin();
   webAdminBegin();
 
-  Serial.println(
-    "No packet injection, credential capture, or rogue AP features are enabled."
-  );
+  Serial.print("Management Wi-Fi: ");
+  Serial.println(getApSsid());
+  Serial.println("Dashboard: http://192.168.4.1");
+
+  if (initialSetupRequired()) {
+    Serial.println("First boot: change setup credentials before normal use.");
+  }
 }
 
 void loop() {
-  frameMonitorLoop();
-  oledDisplayLoop();
+  detectorLoop();
+  scannerLoop();
+  displayLoop();
   webAdminLoop();
   delay(2);
 }

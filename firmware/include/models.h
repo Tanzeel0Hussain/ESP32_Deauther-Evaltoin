@@ -4,18 +4,25 @@
 struct NetworkRecord {
   String ssid;
   String bssid;
+  String security;
   int32_t rssi = -127;
   uint8_t channel = 0;
-  String security;
+  bool hidden = false;
 };
 
-struct DefenseAlert {
-  uint32_t sequence = 0;
+struct AlertRecord {
+  uint32_t id = 0;
   uint32_t uptimeSeconds = 0;
   String source;
-  String bssid;
+  String frameType;
+  String severity;
   int32_t rssi = -127;
   uint8_t channel = 0;
-  uint8_t subtype = 0;
-  uint16_t windowCount = 0;
+  uint16_t framesInWindow = 0;
+  bool broadcastDestination = false;
+};
+
+struct ChannelRecord {
+  uint32_t managementFrames = 0;
+  uint32_t suspiciousFrames = 0;
 };
