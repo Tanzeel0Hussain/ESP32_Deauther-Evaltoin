@@ -1,9 +1,14 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+extern "C" {
+#include "esp_wifi.h"
+}
+
 #include "config.h"
 #include "models.h"
 #include "text_utils.h"
+#include "storage.h"
 #include "wifi_scanner.h"
 
 namespace {
@@ -60,6 +65,15 @@ bool wifiScannerRun() {
   }
 
   WiFi.scanDelete();
+
+  const uint8_t channel = getMonitorChannel();
+  if (channel >= 1 && channel <= 13) {
+    esp_wifi_set_channel(
+      channel,
+      WIFI_SECOND_CHAN_NONE
+    );
+  }
+
   lastScanMs = millis();
   return true;
 }

@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include "config.h"
+#include "detection_logic.h"
 #include "detector.h"
 #include "models.h"
 #include "text_utils.h"
@@ -117,7 +118,10 @@ void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
   const uint8_t frameType = (fc >> 2) & 0x03;
   const uint8_t subtype = (fc >> 4) & 0x0F;
 
-  if (frameType != 0 || (subtype != 0x0C && subtype != 0x0A)) return;
+  if (
+    frameType != 0 ||
+    !DefenseLogic::isObservedThreatSubtype(subtype)
+  ) return;
 
   const uint8_t* destination = frame + 4;
   const uint8_t* source = frame + 10;
@@ -149,8 +153,13 @@ void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
     ++slot.count;
 
     if (
-      slot.count >= alertThreshold &&
-      (slot.lastAlert == 0 || now - slot.lastAlert >= DefenseConfig::ALERT_COOLDOWN_MS)
+      DefenseLogic::shouldRaiseAlert(
+        slot.count,
+        alertThreshold,
+        now,
+        slot.lastAlert,
+        DefenseConfig::ALERT_COOLDOWN_MS
+      )
     ) {
       pushAlert(
         source,

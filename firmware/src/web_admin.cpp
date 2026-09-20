@@ -150,6 +150,19 @@ canvas{width:100%;height:180px;background:#06131f;border-radius:12px}
 </div>
 <div class="two">
 <section class="card"><h3>System Event Log</h3><div class="actions"><button class="secondary" onclick="loadLogs()">Refresh Logs</button><button class="danger" onclick="post('/logs/clear')">Clear Logs</button></div><div id="logs" class="muted" style="margin-top:12px"></div></section>
+<section class="card"><h3>Management Credentials</h3>
+<label class="muted">Management Wi-Fi name</label><input id="apSsid" maxlength="32" value=")HTML";
+  html += DefenseText::htmlEscape(getApSsid());
+  html += R"HTML(">
+<label class="muted">New Wi-Fi password (8–63)</label><input id="apPass" type="password" minlength="8" maxlength="63" placeholder="Leave unchanged unless updating">
+<label class="muted">Admin username</label><input id="adminUser" maxlength="32" value=")HTML";
+  html += DefenseText::htmlEscape(getAdminUser());
+  html += R"HTML(">
+<label class="muted">New admin password (8–64)</label><input id="adminPass" type="password" minlength="8" maxlength="64" placeholder="Required to change credentials">
+<div class="actions"><button onclick="saveCredentials()">Change Credentials & Restart</button></div>
+</section>
+</div>
+<div class="two">
 <section class="card"><h3>System Controls</h3><p class="muted">Management AP: <code>)HTML";
   html += DefenseText::htmlEscape(getApSsid());
   html += R"HTML(</code> · Dashboard: <code>192.168.4.1</code></p>
@@ -174,6 +187,15 @@ async function loadChannels(){const data=await api('/api/channels');const c=$('c
 async function loadLogs(){const data=await api('/api/logs');const box=$('logs');box.textContent='';[...data].reverse().forEach(l=>{const p=document.createElement('div');p.style.padding='7px 0';p.style.borderBottom='1px solid #173247';p.textContent='boot '+l.boot+' · +'+l.seconds+'s · '+l.type+': '+l.message;box.appendChild(p)})}
 async function scan(){const ok=await post('/scan');if(ok){await loadNetworks();await loadStatus()}}
 async function saveSettings(){const ok=await post('/settings',{channel:$('channel').value,threshold:$('threshold').value});if(ok)alert('Settings saved. If the channel changed, reconnect after restart.')}
+async function saveCredentials(){
+  if(!$('apPass').value||!$('adminPass').value){alert('Enter both a new Wi-Fi password and a new admin password.');return}
+  await post('/settings/credentials',{
+    ssid:$('apSsid').value,
+    ap_password:$('apPass').value,
+    admin_user:$('adminUser').value,
+    admin_password:$('adminPass').value
+  })
+}
 async function factoryReset(){if(confirm('Erase dashboard settings, passwords and logs?'))await post('/system/factory-reset')}
 async function refreshAll(){await Promise.all([loadStatus(),loadAlerts(),loadNetworks(),loadChannels(),loadLogs()])}
 refreshAll();setInterval(()=>Promise.all([loadStatus(),loadAlerts(),loadChannels()]),4000);
@@ -312,6 +334,28 @@ void webAdminBegin() {
     server.send(200, "application/json", "{\\"ok\\":true}");
 
     if (channelChanged) scheduleRestart();
+  });
+
+  server.on("/settings/credentials", HTTP_POST, []() {
+    if (!requireAdmin()) return;
+
+    if (!setInitialCredentials(
+      server.arg("ssid"),
+      server.arg("ap_password"),
+      server.arg("admin_user"),
+      server.arg("admin_password")
+    )) {
+      server.send(
+        400,
+        "text/plain",
+        "Invalid credentials. Use a 1-32 character SSID, 8-63 character Wi-Fi password, 1-32 character admin user, 8-64 character admin password, and keep the Wi-Fi/admin passwords different."
+      );
+      return;
+    }
+
+    appendEventLog("security", "Management credentials updated");
+    server.send(200, "application/json", "{\"ok\":true}");
+    scheduleRestart();
   });
 
   server.on("/detector/reset", HTTP_POST, []() {
