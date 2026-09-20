@@ -23,5 +23,6 @@ constexpr uint32_t ALERT_COOLDOWN_MS = 10000;
 constexpr size_t MAX_NETWORKS = 40;
 constexpr size_t MAX_ALERTS = 32;
 constexpr size_t MAX_SOURCES = 16;
+constexpr size_t MAX_PENDING_ALERTS = 16;
 constexpr size_t MAX_LOGS = 24;
 }

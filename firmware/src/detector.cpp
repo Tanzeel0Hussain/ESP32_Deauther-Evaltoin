@@ -22,7 +22,23 @@ struct BurstSlot {
   uint16_t count = 0;
 };
 
+struct PendingAlert {
+  uint8_t source[6] = {};
+  uint8_t bssid[6] = {};
+  uint8_t destination[6] = {};
+  uint8_t subtype = 0;
+  uint16_t reason = 0;
+  uint16_t burst = 0;
+  int8_t rssi = -127;
+  uint8_t channel = 0;
+  uint32_t uptimeMs = 0;
+};
+
 BurstSlot sources[DefenseConfig::MAX_SOURCES];
+PendingAlert pending[DefenseConfig::MAX_PENDING_ALERTS];
+volatile uint8_t pendingHead = 0;
+volatile uint8_t pendingTail = 0;
+volatile uint32_t droppedAlerts = 0;
 AlertRecord alerts[DefenseConfig::MAX_ALERTS];
 
 uint32_t totalDeauth = 0;
@@ -81,7 +97,7 @@ int findOrCreateSource(const uint8_t source[6], const uint8_t bssid[6], uint32_t
   return static_cast<int>(oldest);
 }
 
-void pushAlert(
+void queueAlert(
   const uint8_t source[6],
   const uint8_t bssid[6],
   const uint8_t destination[6],
@@ -92,20 +108,101 @@ void pushAlert(
   uint8_t channel,
   uint32_t now
 ) {
+  const uint8_t next =
+    static_cast<uint8_t>(
+      (pendingHead + 1U) %
+      DefenseConfig::MAX_PENDING_ALERTS
+    );
+
+  if (next == pendingTail) {
+    droppedAlerts =
+      static_cast<uint32_t>(
+        droppedAlerts
+      ) + 1U;
+    return;
+  }
+
+  PendingAlert& item =
+    pending[pendingHead];
+
+  memcpy(item.source, source, 6);
+  memcpy(item.bssid, bssid, 6);
+  memcpy(
+    item.destination,
+    destination,
+    6
+  );
+
+  item.subtype = subtype;
+  item.reason = reason;
+  item.burst = burst;
+  item.rssi = rssi;
+  item.channel = channel;
+  item.uptimeMs = now;
+
+  pendingHead = next;
+}
+
+bool popPendingAlert(
+  PendingAlert& item
+) {
+  bool available = false;
+
+  portENTER_CRITICAL(&mux);
+
+  if (pendingTail != pendingHead) {
+    item = pending[pendingTail];
+    pendingTail =
+      static_cast<uint8_t>(
+        (pendingTail + 1U) %
+        DefenseConfig::MAX_PENDING_ALERTS
+      );
+    available = true;
+  }
+
+  portEXIT_CRITICAL(&mux);
+  return available;
+}
+
+void storeAlert(
+  const PendingAlert& item
+) {
   AlertRecord record;
   record.id = ++alertSequence;
-  record.uptimeMs = now;
-  macToText(source, record.source);
-  macToText(bssid, record.bssid);
-  macToText(destination, record.destination);
-  record.subtype = subtype;
-  record.reason = reason;
-  record.burstCount = burst;
-  record.rssi = rssi;
-  record.channel = channel;
+  record.uptimeMs = item.uptimeMs;
+  macToText(item.source, record.source);
+  macToText(item.bssid, record.bssid);
+  macToText(
+    item.destination,
+    record.destination
+  );
+  record.subtype = item.subtype;
+  record.reason = item.reason;
+  record.burstCount = item.burst;
+  record.rssi = item.rssi;
+  record.channel = item.channel;
 
-  alerts[record.id % DefenseConfig::MAX_ALERTS] = record;
+  alerts[
+    (record.id - 1U) %
+    DefenseConfig::MAX_ALERTS
+  ] = record;
+
   ++alertCount;
+
+  Serial.print("Defense alert: ");
+  Serial.print(
+    item.subtype == 0x0C
+      ? "deauth"
+      : "disassoc"
+  );
+  Serial.print(" source=");
+  Serial.print(record.source);
+  Serial.print(" bssid=");
+  Serial.print(record.bssid);
+  Serial.print(" channel=");
+  Serial.print(record.channel);
+  Serial.print(" burst=");
+  Serial.println(record.burstCount);
 }
 
 void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
@@ -136,12 +233,24 @@ void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
 
   portENTER_CRITICAL_ISR(&mux);
 
-  if (subtype == 0x0C) ++totalDeauth;
-  else ++totalDisassoc;
+  if (subtype == 0x0C) {
+    totalDeauth =
+      static_cast<uint32_t>(
+        totalDeauth
+      ) + 1U;
+  } else {
+    totalDisassoc =
+      static_cast<uint32_t>(
+        totalDisassoc
+      ) + 1U;
+  }
 
   lastRssi = rssi;
   lastChannel = channel;
-  if (channel >= 1 && channel <= 13) ++channelEvents[channel];
+  if (channel >= 1 && channel <= 13) {
+    channelEvents[channel] =
+      channelEvents[channel] + 1U;
+  }
 
   const int index = findOrCreateSource(source, bssid, now);
   if (index >= 0) {
@@ -163,7 +272,7 @@ void promiscuousCallback(void* buffer, wifi_promiscuous_pkt_type_t type) {
         DefenseConfig::ALERT_COOLDOWN_MS
       )
     ) {
-      pushAlert(
+      queueAlert(
         source,
         bssid,
         destination,
@@ -201,7 +310,13 @@ void detectorBegin() {
   paused = false;
 }
 
-void detectorLoop() {}
+void detectorLoop() {
+  PendingAlert item;
+
+  while (popPendingAlert(item)) {
+    storeAlert(item);
+  }
+}
 
 void detectorPause() {
   if (paused) return;
@@ -234,6 +349,9 @@ void detectorReset() {
   totalDisassoc = 0;
   alertCount = 0;
   alertSequence = 0;
+  pendingHead = 0;
+  pendingTail = 0;
+  droppedAlerts = 0;
   lastRssi = -127;
   lastChannel = 0;
   portEXIT_CRITICAL(&mux);
@@ -269,6 +387,14 @@ uint32_t detectorAlertCount() {
   return value;
 }
 
+uint32_t detectorDroppedAlerts() {
+  portENTER_CRITICAL(&mux);
+  const uint32_t value =
+    droppedAlerts;
+  portEXIT_CRITICAL(&mux);
+  return value;
+}
+
 int8_t detectorLastRssi() {
   portENTER_CRITICAL(&mux);
   const int8_t value = lastRssi;
@@ -297,7 +423,11 @@ String detectorAlertsJson() {
   String json = "[";
   for (uint32_t offset = 0; offset < count; ++offset) {
     const uint32_t id = sequence - offset;
-    const AlertRecord& a = snapshot[id % DefenseConfig::MAX_ALERTS];
+    const AlertRecord& a =
+      snapshot[
+        (id - 1U) %
+        DefenseConfig::MAX_ALERTS
+      ];
     if (!a.id) continue;
     if (json.length() > 1) json += ",";
 

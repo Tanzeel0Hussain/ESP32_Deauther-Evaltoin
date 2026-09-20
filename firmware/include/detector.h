@@ -13,6 +13,7 @@ bool detectorPaused();
 uint32_t detectorTotalDeauth();
 uint32_t detectorTotalDisassoc();
 uint32_t detectorAlertCount();
+uint32_t detectorDroppedAlerts();
 int8_t detectorLastRssi();
 uint8_t detectorLastChannel();
 

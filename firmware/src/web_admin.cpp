@@ -192,7 +192,7 @@ const esc=s=>String(s??'');
 async function api(path){const r=await fetch(path,{cache:'no-store'});if(!r.ok)throw new Error(await r.text());return r.json()}
 async function post(path,data={}){data.csrf=csrf;const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)});if(!r.ok){alert(await r.text());return false}if(r.redirected)location.href=r.url;return true}
 function td(tr,text,cls=''){const d=document.createElement('td');d.textContent=esc(text);if(cls)d.className=cls;tr.appendChild(d)}
-async function loadStatus(){const s=await api('/api/status');$('deauth').textContent=s.deauth;$('disassoc').textContent=s.disassoc;$('alertCount').textContent=s.alerts;$('networkCount').textContent=s.networks;$('channel').value=s.monitorChannel;$('threshold').value=s.threshold;$('device').textContent=s.chip+' · rev '+s.revision+' · free heap '+s.freeHeap+' B · uptime '+s.uptimeSeconds+'s · IP '+s.ip;}
+async function loadStatus(){const s=await api('/api/status');$('deauth').textContent=s.deauth;$('disassoc').textContent=s.disassoc;$('alertCount').textContent=s.alerts;$('networkCount').textContent=s.networks;$('channel').value=s.monitorChannel;$('threshold').value=s.threshold;$('device').textContent=s.chip+' · rev '+s.revision+' · free heap '+s.freeHeap+' B · uptime '+s.uptimeSeconds+'s · dropped alert queue '+s.droppedAlerts+' · IP '+s.ip;}
 async function loadAlerts(){const data=await api('/api/alerts');const body=$('alerts');body.textContent='';data.forEach(a=>{const tr=document.createElement('tr');td(tr,a.seconds+'s');td(tr,a.type,'alert');td(tr,a.bssid+' / '+a.source);td(tr,a.channel);td(tr,a.rssi+' dBm');td(tr,a.burst);td(tr,a.reason);body.appendChild(tr)})}
 async function loadNetworks(){const data=await api('/api/networks');const body=$('networks');body.textContent='';data.sort((a,b)=>b.rssi-a.rssi).forEach(n=>{const tr=document.createElement('tr');td(tr,n.ssid||'(hidden)');td(tr,n.bssid);td(tr,n.rssi+' dBm');td(tr,n.channel);td(tr,n.security,n.security==='Open'?'warn':'');body.appendChild(tr)})}
 async function loadChannels(){const data=await api('/api/channels');const c=$('chart'),x=c.getContext('2d'),w=c.width,h=c.height;x.clearRect(0,0,w,h);const max=Math.max(1,...data.map(v=>v.events));data.forEach((v,i)=>{const bw=w/13-7,bh=(v.events/max)*(h-35),left=i*(w/13)+4;x.fillStyle='#2c7dff';x.fillRect(left,h-bh-22,bw,bh);x.fillStyle='#9fc3d7';x.font='12px system-ui';x.fillText(String(v.channel),left+bw/3,h-6)});}
@@ -233,6 +233,7 @@ String statusJson() {
   json += ",\"deauth\":" + String(detectorTotalDeauth());
   json += ",\"disassoc\":" + String(detectorTotalDisassoc());
   json += ",\"alerts\":" + String(detectorAlertCount());
+  json += ",\"droppedAlerts\":" + String(detectorDroppedAlerts());
   json += ",\"lastRssi\":" + String(detectorLastRssi());
   json += ",\"lastChannel\":" + String(detectorLastChannel());
   json += "}";
