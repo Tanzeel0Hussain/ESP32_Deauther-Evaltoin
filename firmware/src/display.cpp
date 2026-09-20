@@ -1,57 +1,45 @@
 #include <Arduino.h>
-
-#include "display.h"
-#include "detector.h"
-#include "scanner.h"
-
-#if DEFENSELAB_OLED
 #include <Wire.h>
+#include <WiFi.h>
 #include <U8g2lib.h>
 
+#include "detector.h"
+#include "display.h"
+#include "storage.h"
+#include "wifi_scanner.h"
+
 namespace {
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C display(U8G2_R0, U8X8_PIN_NONE);
-uint32_t lastDrawMs = 0;
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, U8X8_PIN_NONE);
+bool oledPresent = false;
+unsigned long lastDraw = 0;
+
+bool detectOled() {
+  Wire.begin(21, 22);
+  Wire.beginTransmission(0x3C);
+  return Wire.endTransmission() == 0;
+}
 }
 
 void displayBegin() {
-  display.begin();
-  display.clearBuffer();
-  display.setFont(u8g2_font_6x12_tf);
-  display.drawStr(0, 12, "ESP32 Defense Lab");
-  display.drawStr(0, 28, "Passive monitor");
-  display.sendBuffer();
+  oledPresent = detectOled();
+  if (!oledPresent) return;
+
+  oled.begin();
+  oled.setFont(u8g2_font_6x10_tf);
 }
 
 void displayLoop() {
-  if (millis() - lastDrawMs < 1000) return;
-  lastDrawMs = millis();
+  if (!oledPresent || millis() - lastDraw < 1000) return;
+  lastDraw = millis();
 
-  display.clearBuffer();
-  display.setFont(u8g2_font_6x12_tf);
-  display.drawStr(0, 10, "Wireless Defense");
+  oled.clearBuffer();
+  oled.setFont(u8g2_font_6x10_tf);
+  oled.drawStr(0, 9, "Wireless Defense Lab");
 
-  display.setCursor(0, 24);
-  display.print("CH ");
-  display.print(detectorChannel());
-
-  display.setCursor(0, 36);
-  display.print("APs ");
-  display.print(scannerNetworkCount());
-
-  display.setCursor(0, 48);
-  display.print("Sus ");
-  display.print(detectorSuspiciousFrames());
-
-  display.setCursor(0, 60);
-  display.print("Alerts ");
-  display.print(detectorAlertCount());
-
-  display.sendBuffer();
+  const String ip = WiFi.softAPIP().toString();
+  oled.drawStr(0, 23, ("IP " + ip).c_str());
+  oled.drawStr(0, 34, ("Ch " + String(getMonitorChannel()) + "  APs " + String(wifiScannerCount())).c_str());
+  oled.drawStr(0, 45, ("Deauth " + String(detectorTotalDeauth())).c_str());
+  oled.drawStr(0, 56, ("Alerts " + String(detectorAlertCount())).c_str());
+  oled.sendBuffer();
 }
-
-#else
-
-void displayBegin() {}
-void displayLoop() {}
-
-#endif

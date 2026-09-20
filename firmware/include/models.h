@@ -4,25 +4,20 @@
 struct NetworkRecord {
   String ssid;
   String bssid;
-  String security;
   int32_t rssi = -127;
   uint8_t channel = 0;
-  bool hidden = false;
+  String security;
 };
 
 struct AlertRecord {
   uint32_t id = 0;
-  uint32_t uptimeSeconds = 0;
-  String source;
-  String frameType;
-  String severity;
-  int32_t rssi = -127;
+  uint32_t uptimeMs = 0;
+  char bssid[18] = {};
+  char source[18] = {};
+  char destination[18] = {};
+  uint16_t reason = 0;
+  uint16_t burstCount = 0;
+  int8_t rssi = -127;
   uint8_t channel = 0;
-  uint16_t framesInWindow = 0;
-  bool broadcastDestination = false;
-};
-
-struct ChannelRecord {
-  uint32_t managementFrames = 0;
-  uint32_t suspiciousFrames = 0;
+  uint8_t subtype = 0;
 };

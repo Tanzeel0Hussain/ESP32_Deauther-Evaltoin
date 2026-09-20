@@ -1,28 +1,33 @@
 # Security Policy
 
-## Maintained scope
+## Maintained security model
 
-ESP32 Wireless Defense Lab is a **defensive, receive-only wireless monitoring project**.
+ESP32 Wireless Defense Lab is maintained as a defensive, receive-only wireless visibility project.
 
-The maintained firmware provides:
+The main branch does not maintain functionality for:
 
-- passive nearby Wi-Fi inventory;
-- passive observation of 802.11 deauthentication and disassociation management frames;
-- threshold-based local alerts;
-- channel/RSSI visibility;
-- a protected local dashboard;
-- optional OLED status output.
-
-The maintained project intentionally does **not** provide packet injection, deauthentication transmission, credential collection, Evil Twin impersonation, rogue captive portals, WPA/PMKID capture, beacon flooding, BLE flooding or HID payload injection.
+- deauthentication/disassociation packet injection,
+- Evil Twin or access-point impersonation,
+- password/credential collection,
+- beacon flooding,
+- handshake or PMKID harvesting,
+- BLE advertisement spam,
+- HID/keystroke injection.
 
 ## Local management security
 
-The management access point is protected with WPA2-compatible credentials and the dashboard uses HTTP Digest authentication. Factory credentials are setup-only: the normal dashboard remains locked until both the management Wi-Fi password and administrator password are changed.
+The local dashboard uses:
 
-Passwords are stored using AES-GCM protected application storage with a random per-device master secret. A failure to decrypt critical credentials enters serial-assisted recovery rather than silently falling back to known factory credentials.
+- WPA2-protected management Wi-Fi,
+- mandatory first-boot replacement of public setup credentials,
+- separate management-Wi-Fi and admin passwords,
+- HTTP Digest authentication,
+- per-boot CSRF tokens for state-changing requests,
+- AES-256-GCM application-level at-rest protection for local passwords,
+- bounded input lengths and escaped HTML/JSON output.
 
-The dashboard is local HTTP, not TLS. Use the management network as a trusted local administration network.
+The dashboard is served over local HTTP rather than TLS. Keep the management Wi-Fi trusted and physically local.
 
-## Reporting
+## Responsible reporting
 
-Please report security issues privately to the repository owner rather than publishing exploit details in a public issue before a fix is available.
+If you find a security issue in the maintained defensive firmware, open a GitHub issue without publishing active credentials, private network identifiers, or exploit details that would put third parties at risk.

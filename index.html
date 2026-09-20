@@ -1,57 +1,134 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="ESP32 Wireless Defense Lab — passive Wi-Fi monitoring, management-frame detection and local defensive analytics.">
-<meta property="og:title" content="ESP32 Wireless Defense Lab">
-<meta property="og:description" content="Passive Wi-Fi monitoring and deauth/disassociation detection for classic ESP32.">
-<title>ESP32 Wireless Defense Lab</title>
-<link rel="stylesheet" href="assets/site.css">
-<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="ESP32 Wireless Defense Lab — passive Wi-Fi visibility and management-frame anomaly detection.">
+  <meta name="theme-color" content="#06101a">
+  <title>ESP32 Wireless Defense Lab</title>
+  <link rel="stylesheet" href="assets/site.css">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
 </head>
 <body>
-<header class="nav"><div class="wrap navin"><div class="brand">ESP32 <span>Defense Lab</span></div><nav class="links"><a href="#features">Features</a><a href="#architecture">Architecture</a><a href="#install" class="btn">Install</a></nav></div></header>
+<header class="topbar">
+  <a class="brand" href="#top"><span class="brand-mark">◈</span><span>ESP32 <b>Defense Lab</b></span></a>
+  <nav>
+    <a href="#features">Features</a>
+    <a href="#how">How it works</a>
+    <a href="#install">Install</a>
+    <a href="#hardware">Hardware</a>
+    <a class="nav-cta" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin">GitHub ↗</a>
+  </nav>
+</header>
 
-<main>
-<div class="wrap hero">
-<div><div class="kicker">Receive-only · Defensive · Open source</div><h1>See wireless threats.<br><em>Do not create them.</em></h1><p class="lead">A classic ESP32 defensive lab for passive Wi-Fi inventory, deauthentication/disassociation observation, channel analytics and local alerting — with no maintained packet-injection or credential-harvesting path.</p><div class="actions"><a class="btn" href="#install">⚡ Install Defense Lab</a><a class="btn secondary" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin">View Source</a></div></div>
-<div class="radar" aria-label="Abstract passive wireless monitoring radar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><div class="shield">🛡️</div></div>
-</div>
+<main id="top">
+<section class="hero">
+  <div class="hero-copy reveal">
+    <div class="eyebrow"><span></span> RECEIVE-ONLY · DEFENSIVE · ESP32</div>
+    <h1>See suspicious Wi-Fi activity.<br><em>Do not create it.</em></h1>
+    <p class="lead">A compact ESP32 wireless-defense lab that observes deauthentication/disassociation bursts, nearby access points, channel activity and local device health — without attack-frame injection or credential capture.</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="#install">⚡ Install Firmware</a>
+      <a class="btn secondary" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0">Release v1.0.0</a>
+    </div>
+    <div class="trust-row">
+      <span>✓ Passive detector</span><span>✓ Local dashboard</span><span>✓ Optional OLED</span><span>✓ CI tested</span>
+    </div>
+  </div>
+  <div class="hero-visual reveal">
+    <div class="orb"></div>
+    <div class="radar-card">
+      <div class="radar-top"><span>WIRELESS DEFENSE</span><span class="live">● MONITORING</span></div>
+      <div class="radar">
+        <i></i><i></i><i></i><span class="sweep"></span>
+        <b class="node n1"></b><b class="node n2"></b><b class="node n3 alert"></b><b class="node n4"></b>
+      </div>
+      <div class="mini-grid">
+        <div><small>DEAUTH</small><strong>24</strong></div>
+        <div><small>ALERTS</small><strong>02</strong></div>
+        <div><small>CHANNEL</small><strong>06</strong></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-<section id="features"><div class="wrap"><div class="kicker">Capabilities</div><h2 class="title">A small defensive sensor with a focused job.</h2><div class="grid">
-<article class="card"><div class="icon">📡</div><h3>Passive frame monitor</h3><p>Observes deauthentication and disassociation management frames on the selected channel without transmitting attack frames.</p></article>
-<article class="card"><div class="icon">🚨</div><h3>Threshold alerts</h3><p>Groups events by source in a bounded time window and creates local alerts when the configured threshold is reached.</p></article>
-<article class="card"><div class="icon">🛰️</div><h3>Nearby Wi-Fi inventory</h3><p>Scans SSIDs, BSSIDs, channels, RSSI and security type, then summarizes channel occupancy.</p></article>
-<article class="card"><div class="icon">🔐</div><h3>Protected administration</h3><p>Mandatory first-boot password change, Digest authentication, CSRF protection and AES-GCM protected stored credentials.</p></article>
-<article class="card"><div class="icon">📊</div><h3>Local dashboard</h3><p>View counters, recent alerts, scan results, free heap and uptime directly from the ESP32 management network.</p></article>
-<article class="card"><div class="icon">🖥️</div><h3>Optional OLED</h3><p>Enable a 128×64 I2C status display at build time for channel, event counters and alert totals.</p></article>
-</div></div></section>
+<section class="proof reveal">
+  <div><strong>100%</strong><span>receive-only detector path</span></div>
+  <div><strong>2.4 GHz</strong><span>classic ESP32 Wi-Fi</span></div>
+  <div><strong>13</strong><span>monitorable channels</span></div>
+  <div><strong>Local</strong><span>no cloud account required</span></div>
+</section>
 
-<section><div class="wrap notice"><b>Defensive boundary:</b> the maintained firmware does not include deauthentication transmission, Evil Twin impersonation, credential collection, WPA/PMKID capture, beacon flooding, BLE flooding or HID injection.</div></section>
+<section id="features" class="section">
+  <div class="section-head reveal"><div class="eyebrow"><span></span> CAPABILITIES</div><h2>Useful defensive visibility on a tiny board.</h2></div>
+  <div class="cards">
+    <article class="card reveal"><div class="icon">⌁</div><h3>Management-frame alerts</h3><p>Observe deauthentication and disassociation frames and raise burst alerts using configurable thresholds.</p></article>
+    <article class="card reveal"><div class="icon">◉</div><h3>Wi-Fi inventory</h3><p>View nearby SSIDs, BSSIDs, RSSI, channels and advertised security modes from the local dashboard.</p></article>
+    <article class="card reveal"><div class="icon">▥</div><h3>Channel analytics</h3><p>Track observed suspicious management-frame event activity across 2.4 GHz channels.</p></article>
+    <article class="card reveal"><div class="icon">⌘</div><h3>Secure local admin</h3><p>WPA2 management AP, Digest authentication, mandatory first-boot password replacement and CSRF protection.</p></article>
+    <article class="card reveal"><div class="icon">▣</div><h3>Optional OLED</h3><p>SSD1306 status display automatically shows channel, IP, observed events and alert count when attached.</p></article>
+    <article class="card reveal"><div class="icon">✓</div><h3>Automated quality checks</h3><p>PlatformIO build, host detector tests and flash-size budget run automatically in GitHub Actions.</p></article>
+  </div>
+</section>
 
-<section id="architecture"><div class="wrap"><div class="kicker">Architecture</div><h2 class="title">Receive → classify → alert → explain.</h2><div class="arch">Nearby 2.4 GHz Wi-Fi
-        │ passive receive
-        ▼
-ESP32 promiscuous management-frame filter
-        │
-        ▼
-Deauth / disassociation classifier
-        │
-        ▼
-Per-source 10-second windows
-        │
-        ├── counters + threshold alerts ──► Local dashboard
-        │
-        └────────────────────────────────► Optional OLED
+<section id="how" class="section split">
+  <div class="reveal">
+    <div class="eyebrow"><span></span> HOW IT WORKS</div>
+    <h2>Observe → group → alert → investigate.</h2>
+    <p>The ESP32 listens for selected Wi-Fi management frames on the configured channel. It groups observed deauthentication/disassociation traffic by source and BSSID, tracks burst frequency and surfaces suspicious activity to the local dashboard.</p>
+    <div class="notice">An alert is an observation signal, not proof of attacker identity. MAC addresses can be spoofed and legitimate infrastructure can emit management frames.</div>
+  </div>
+  <div class="flow reveal">
+    <div><b>01</b><span><strong>Listen</strong><small>Promiscuous receive mode</small></span></div>
+    <div><b>02</b><span><strong>Classify</strong><small>Deauth / disassoc subtype</small></span></div>
+    <div><b>03</b><span><strong>Correlate</strong><small>Source + BSSID burst window</small></span></div>
+    <div><b>04</b><span><strong>Alert</strong><small>Dashboard + optional OLED</small></span></div>
+  </div>
+</section>
 
-Separate requested scan:
-SSID / BSSID / RSSI / channel / security ──► Channel occupancy</div></div></section>
+<section id="install" class="section install">
+  <div class="install-copy reveal">
+    <div class="eyebrow"><span></span> START HERE · v1.0.0</div>
+    <h2>Flash the defensive firmware.</h2>
+    <p>Connect a classic ESP32 DevKit/WROOM-style board by USB. Browser flashing uses Web Serial and works best in a Chromium-based desktop browser.</p>
+    <div class="install-actions">
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate" class="btn primary big">⚡ Install Firmware</button>
+      </esp-web-install-button>
+      <a class="btn secondary" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/download/v1.0.0/esp32-defense-lab-full.bin">↓ Full Firmware</a>
+    </div>
+  </div>
+  <div class="steps reveal">
+    <div><b>1</b><span>Connect ESP32 by USB</span></div>
+    <div><b>2</b><span>Install v1.0.0 firmware</span></div>
+    <div><b>3</b><span>Join <code>ESP32-Defense-Lab</code></span></div>
+    <div><b>4</b><span>Open <code>192.168.4.1</code></span></div>
+  </div>
+</section>
 
-<section id="install"><div class="wrap install"><div><div class="kicker">Browser installer · v1.0.0</div><h2 class="title">Connect your ESP32 and install.</h2><p class="lead">Use a Chromium-based desktop browser with Web Serial. The installer is for classic ESP32 boards compatible with the project build target.</p><esp-web-install-button manifest="manifest.json"><button slot="activate" class="btn">⚡ Install Defense Lab</button></esp-web-install-button><div class="actions"><a class="btn secondary" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0">Release & Firmware</a></div></div>
-<div class="card"><div class="step">Connect the ESP32 over USB.</div><div class="step">Install firmware and reboot.</div><div class="step">Join <b>ESP32-Defense-Lab</b> using <b>defenselab32</b>.</div><div class="step">Open <b>192.168.4.1</b> and sign in with <b>admin / change-me-32</b>.</div><div class="step">Replace both setup passwords before the dashboard unlocks.</div></div></div></section>
+<section class="section credentials reveal">
+  <div><div class="eyebrow"><span></span> FIRST BOOT</div><h2>Setup credentials</h2><p>The dashboard forces you to replace the two public setup passwords before normal monitoring.</p></div>
+  <div class="credential-grid">
+    <div><small>WI-FI</small><strong>ESP32-Defense-Lab</strong><code>defenselab</code></div>
+    <div><small>ADMIN</small><strong>admin</strong><code>changeme32</code></div>
+  </div>
+</section>
+
+<section id="hardware" class="section">
+  <div class="section-head reveal"><div class="eyebrow"><span></span> HARDWARE</div><h2>Simple classic ESP32 setup.</h2></div>
+  <div class="hardware-grid">
+    <div class="board reveal"><div class="chip"><span>ESP32</span><small>WIRELESS DEFENSE LAB</small></div><i class="pin p1"></i><i class="pin p2"></i><i class="pin p3"></i><i class="pin p4"></i></div>
+    <div class="hardware-copy reveal"><p><strong>Required:</strong> classic ESP32 DevKit / ESP32-WROOM-32 compatible board, 4 MB flash recommended, USB data cable.</p><p><strong>Optional OLED:</strong> SSD1306 128×64 I²C at address 0x3C, SDA GPIO 21 and SCL GPIO 22.</p><p class="notice">Classic ESP32 is single-radio. The dashboard AP and passive monitor share one selected 2.4 GHz channel.</p></div>
+  </div>
+</section>
+
+<section class="final-cta reveal">
+  <div><div class="eyebrow"><span></span> DEFENSIVE BY DESIGN</div><h2>Visibility without interference.</h2><p>Built by Tanzeel Hussain for authorized wireless-security learning and monitoring.</p></div>
+  <a class="btn primary" href="https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin">View Source ↗</a>
+</section>
 </main>
 
-<footer class="footer"><div class="wrap">ESP32 Wireless Defense Lab · Built by Tanzeel Hussain · <span data-year></span> · MIT License</div></footer>
+<footer><span>ESP32 Wireless Defense Lab · v1.0.0</span><span>MIT License · Tanzeel Hussain</span></footer>
 <script src="assets/site.js"></script>
-</body></html>
+</body>
+</html>

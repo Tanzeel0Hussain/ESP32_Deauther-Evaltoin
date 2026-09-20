@@ -1,21 +1,20 @@
 #pragma once
 #include <Arduino.h>
+#include "storage.h"
 
 void detectorBegin();
 void detectorLoop();
+void detectorReset();
+void detectorUpdateThreshold(uint16_t threshold);
 void detectorPause();
 void detectorResume();
+bool detectorPaused();
 
-bool detectorSetChannel(uint8_t channel);
-uint8_t detectorChannel();
-
-uint32_t detectorManagementFrames();
-uint32_t detectorSuspiciousFrames();
+uint32_t detectorTotalDeauth();
+uint32_t detectorTotalDisassoc();
 uint32_t detectorAlertCount();
-uint32_t detectorDroppedAlerts();
+int8_t detectorLastRssi();
+uint8_t detectorLastChannel();
 
 String detectorAlertsJson();
-String detectorChannelsJson();
-String detectorStatusJson();
-
-void detectorClearAlerts();
+String detectorChannelJson();

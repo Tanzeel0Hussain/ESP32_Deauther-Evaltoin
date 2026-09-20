@@ -2,82 +2,106 @@
 
 # ESP32 Wireless Defense Lab
 
-### Passive Wi-Fi monitoring, deauth/disassociation detection and local defensive analytics for classic ESP32
+### Passive Wi-Fi visibility and management-frame anomaly detection for classic ESP32
 
-[![Firmware Build](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml/badge.svg)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml)
-[![Live Site](https://img.shields.io/badge/Live-Project_Site-24d7ff)](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/)
-[![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-45e4a5)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0)
-[![ESP32](https://img.shields.io/badge/Target-Classic_ESP32-438cff)](docs/HARDWARE.md)
+[![Firmware CI](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml/badge.svg)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml)
+[![Live Site](https://img.shields.io/badge/Live-Project_Site-29d9ff)](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/)
+[![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0)
+[![ESP32](https://img.shields.io/badge/Target-Classic_ESP32-2c7dff)](docs/HARDWARE.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-
-[**Open Live Site**](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/) ·
-[**Download Firmware**](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0) ·
-[**Hardware Guide**](docs/HARDWARE.md)
 
 </div>
 
----
-
 ## What this project is
 
-ESP32 Wireless Defense Lab turns a classic ESP32 into a **defensive local wireless visibility tool**. It passively observes nearby 802.11 management traffic on one selected 2.4 GHz channel, counts deauthentication/disassociation frames, creates threshold alerts, inventories nearby Wi-Fi networks and presents the results in a protected local dashboard.
+**ESP32 Wireless Defense Lab** is a defensive, receive-only Wi-Fi monitoring project for classic ESP32 boards. It observes nearby 2.4 GHz Wi-Fi metadata and selected 802.11 management frames, then presents useful visibility through a secure local dashboard.
 
-The maintained firmware is intentionally receive-only. It does **not** transmit deauthentication frames, clone access points, collect passwords, capture WPA/PMKID material or provide other disruption/credential-harvesting features.
+The maintained firmware is intentionally defensive. It does **not** include deauthentication transmission, Evil Twin access-point impersonation, credential collection, beacon flooding, handshake/PMKID harvesting, BLE spam, or HID payload modules.
 
-## Key features
+## Core features
 
-| Monitoring | Visibility | Security | Usability |
-|---|---|---|---|
-| Passive management-frame RX | Nearby SSID/BSSID list | Mandatory first-boot credential change | Responsive local dashboard |
-| Deauth frame counter | RSSI and channel | HTTP Digest admin auth | One-click network scan |
-| Disassociation counter | Channel occupancy | CSRF protection | Clear alert history |
-| Per-source alert windows | Security type | AES-GCM protected secrets | Optional OLED |
-| Dropped-event telemetry | Free-heap / uptime | Serial-assisted recovery | Browser installer |
-| Configurable threshold | Fixed monitor channel | Factory reset wipes master key | CI + releases |
+| Area | Capabilities |
+|---|---|
+| Passive detector | Observes deauthentication and disassociation management frames |
+| Burst alerts | Per-source/BSSID burst tracking with configurable threshold and cooldown |
+| Wi-Fi inventory | Nearby SSID, BSSID, RSSI, channel and security metadata |
+| Channel analytics | Event activity for 2.4 GHz channels 1–13 |
+| Local dashboard | Responsive dark dashboard at `192.168.4.1` |
+| Security | WPA2 management AP, HTTP Digest admin auth, per-boot CSRF token |
+| Credential storage | AES-256-GCM protected local management credentials |
+| First boot | Mandatory replacement of public setup credentials |
+| Event history | Reset reasons, scans, settings changes and detector events |
+| OLED | Optional SSD1306 128×64 status display on GPIO 21/22 |
+| Reliability | Task watchdog, NVS persistence, factory reset |
+| Quality | PlatformIO build, host detector tests, flash-size budget in GitHub Actions |
 
 ## Start here
 
-### Browser installer
+### Browser install
 
-1. Open the [live project site](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/) in a Chromium-based desktop browser.
-2. Connect the classic ESP32 by USB.
-3. Click **Install Defense Lab**.
-4. After reboot, join:
-   - Wi-Fi: `ESP32-Defense-Lab`
-   - Setup password: `defenselab32`
+1. Open the [live project page](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/).
+2. Connect a supported classic ESP32 by USB.
+3. Click **Install Firmware** in a Chromium-based desktop browser.
+4. After flashing, join `ESP32-Defense-Lab`.
 5. Open `http://192.168.4.1`.
-6. Sign in with:
-   - Username: `admin`
-   - Setup password: `change-me-32`
-7. Replace both factory passwords. The normal dashboard stays locked until this is completed.
+6. Sign in with the setup credentials below.
+7. Replace both public setup passwords before the dashboard unlocks.
 
-### Build from source
+### First-boot setup credentials
 
-```bash
-python3 -m pip install platformio
-pio run -e esp32dev
-```
+| Setting | Factory setup value |
+|---|---|
+| Management Wi-Fi | `ESP32-Defense-Lab` |
+| Wi-Fi password | `defenselab` |
+| Dashboard | `http://192.168.4.1` |
+| Admin username | `admin` |
+| Admin password | `changeme32` |
 
-To upload from PlatformIO:
-
-```bash
-pio run -e esp32dev -t upload
-```
+These are setup-only defaults. The Wi-Fi password and admin password must be changed and must remain different.
 
 ## How detection works
 
-The ESP32 enables promiscuous **receive** mode with a management-frame filter. The parser looks only for 802.11 management subtypes:
+The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window.
 
-- subtype 12 — deauthentication;
-- subtype 10 — disassociation.
+An alert means **suspicious management-frame activity was observed**. It is not proof that a specific device is malicious, because MAC addresses can be spoofed and legitimate infrastructure may also emit management frames.
 
-Events are grouped by source MAC in a 10-second window. When a source reaches the configured threshold, the firmware records a local alert with source, BSSID, RSSI, channel and observed count.
+The firmware never calls an 802.11 transmit/injection routine for attack traffic.
 
-This is an indicator, not proof of malicious intent. Legitimate AP/client behavior can also generate deauthentication/disassociation frames.
+## Single-radio limitation
 
-## Scanner behavior
+Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network scan temporarily leaves the selected channel and the firmware restores the configured monitor channel afterward.
 
-The ESP32 has one 2.4 GHz radio. The monitor normally stays on the configured channel. When you request a full nearby-network scan, monitoring is temporarily paused while the radio scans other channels, then it returns to the configured monitor channel.
+This is a compact lab/defensive visibility device, not a multi-radio enterprise WIDS.
+
+## Optional OLED
+
+A 128×64 SSD1306 I²C display at address `0x3C` is detected automatically.
+
+| OLED | ESP32 |
+|---|---|
+| VCC | 3.3 V |
+| GND | GND |
+| SDA | GPIO 21 |
+| SCL | GPIO 22 |
+
+The display shows the local IP, monitor channel, network count, observed deauthentication count and alert count.
+
+## Build from source
+
+Requirements: Python, PlatformIO and a supported classic ESP32 development board.
+
+```bash
+git clone https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin.git
+cd ESP32_Deauther-Evaltoin
+pio run -e esp32dev
+```
+
+Upload from PlatformIO:
+
+```bash
+pio run -e esp32dev -t upload
+pio device monitor -b 115200
+```
 
 ## Repository structure
 
@@ -87,27 +111,22 @@ The ESP32 has one 2.4 GHz radio. The monitor normally stays on the configured ch
 │   ├── include/
 │   │   ├── config.h
 │   │   ├── crypto_store.h
-│   │   ├── frame_logic.h
-│   │   ├── frame_monitor.h
+│   │   ├── detection_logic.h
+│   │   ├── detector.h
+│   │   ├── display.h
 │   │   ├── models.h
-│   │   ├── oled_display.h
 │   │   ├── storage.h
+│   │   ├── system_monitor.h
 │   │   ├── text_utils.h
 │   │   ├── web_admin.h
 │   │   └── wifi_scanner.h
 │   └── src/
-│       ├── crypto_store.cpp
-│       ├── frame_monitor.cpp
-│       ├── main.cpp
-│       ├── oled_display.cpp
-│       ├── storage.cpp
-│       ├── web_admin.cpp
-│       └── wifi_scanner.cpp
 ├── tests/
 ├── docs/
+│   └── firmware/
+├── assets/
 ├── .github/workflows/
 ├── index.html
-├── assets/
 ├── manifest.json
 ├── platformio.ini
 ├── SECURITY.md
@@ -116,33 +135,27 @@ The ESP32 has one 2.4 GHz radio. The monitor normally stays on the configured ch
 
 ## Validation status
 
-| Check | Status |
+| Validation | Status |
 |---|---|
-| Host frame-classification tests | Automated in CI |
+| Host detector logic tests | Automated in CI |
 | ESP32 firmware compile | Automated in CI |
-| Browser/release binaries | Generated by CI |
-| No maintained packet-injection path | Source-reviewable |
-| Physical ESP32 boot | Hardware test required |
-| Detection sensitivity/false positives | Hardware/lab test required |
-| 12–24 hour stability | Hardware test required |
+| 90% flash budget | Enforced in CI |
+| Offensive modules removed from maintained main branch | Yes |
+| Browser firmware/release packaging | v1.0.0 pipeline |
+| Physical ESP32 boot | Requires real hardware validation |
+| Real RF detection sensitivity | Requires controlled lab validation |
+| OLED hardware | Requires optional display hardware |
 
-## Important limitations
+See [Hardware Notes](docs/HARDWARE.md) before testing.
 
-- Classic ESP32 is 2.4 GHz only.
-- Monitoring is one channel at a time.
-- A full Wi-Fi scan temporarily interrupts fixed-channel monitoring.
-- Counts show observed frames, not attribution of intent.
-- Local admin traffic is HTTP Digest over local HTTP, not TLS.
-- Optional OLED support must be enabled at build time.
+## Responsible use
 
-## Security model
+Use the device only where you own the equipment or have permission to monitor the radio environment. The project is designed for defensive visibility and education, not interference.
 
-See [SECURITY.md](SECURITY.md) and [Architecture](docs/ARCHITECTURE.md).
+## Author
+
+Built and maintained by **Tanzeel Hussain**.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
-
----
-
-Built by **Tanzeel Hussain**.
+MIT — see [LICENSE](LICENSE).

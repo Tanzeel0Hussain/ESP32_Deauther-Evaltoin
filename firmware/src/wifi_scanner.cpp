@@ -5,161 +5,131 @@ extern "C" {
 #include "esp_wifi.h"
 }
 
-#include "wifi_scanner.h"
 #include "config.h"
+#include "detector.h"
 #include "models.h"
-#include "storage.h"
 #include "text_utils.h"
+#include "storage.h"
+#include "wifi_scanner.h"
 
 namespace {
-NetworkRecord networks[DefenseLabConfig::MAX_SCAN_RESULTS];
+NetworkRecord networks[DefenseConfig::MAX_NETWORKS];
 size_t networkCount = 0;
+int32_t strongest = -127;
+uint8_t openNetworks = 0;
+unsigned long lastScanMs = 0;
 
-String securityLabel(wifi_auth_mode_t mode) {
+String authName(wifi_auth_mode_t mode) {
   switch (mode) {
     case WIFI_AUTH_OPEN: return "Open";
     case WIFI_AUTH_WEP: return "WEP";
     case WIFI_AUTH_WPA_PSK: return "WPA";
     case WIFI_AUTH_WPA2_PSK: return "WPA2";
     case WIFI_AUTH_WPA_WPA2_PSK: return "WPA/WPA2";
-#ifdef WIFI_AUTH_WPA3_PSK
+    case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Enterprise";
     case WIFI_AUTH_WPA3_PSK: return "WPA3";
-#endif
-#ifdef WIFI_AUTH_WPA2_WPA3_PSK
     case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3";
-#endif
-    default: return "Secured";
+    default: return "Unknown";
   }
 }
 }
 
 void wifiScannerBegin() {
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.setSleep(false);
-
-  IPAddress ip(
-    DefenseLabConfig::AP_IP_A,
-    DefenseLabConfig::AP_IP_B,
-    DefenseLabConfig::AP_IP_C,
-    DefenseLabConfig::AP_IP_D
-  );
-
-  IPAddress mask(255, 255, 255, 0);
-  WiFi.softAPConfig(ip, ip, mask);
-
-  const uint8_t channel = storageGetMonitorChannel();
-
-  WiFi.softAP(
-    storageGetApSsid().c_str(),
-    storageGetApPassword().c_str(),
-    channel,
-    false,
-    4
-  );
-
-  esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-
-  Serial.print("Management AP: ");
-  Serial.println(storageGetApSsid());
-  Serial.print("Dashboard: http://");
-  Serial.println(WiFi.softAPIP());
-  Serial.print("Monitor channel: ");
-  Serial.println(channel);
+  wifiScannerRun();
 }
 
-bool wifiScannerScan() {
-  networkCount = 0;
+void wifiScannerLoop() {}
 
-  const int found = WiFi.scanNetworks(false, true);
+bool wifiScannerRun() {
+  const bool wasPaused = detectorPaused();
+
+  if (!wasPaused) {
+    detectorPause();
+  }
+
+  const int found = WiFi.scanNetworks(
+    false,
+    true,
+    false,
+    120
+  );
 
   if (found < 0) {
     WiFi.scanDelete();
-    wifiScannerRestoreMonitorChannel();
+
+    if (!wasPaused) {
+      detectorResume();
+    }
+
     return false;
   }
 
-  const size_t count =
-    static_cast<size_t>(found) > DefenseLabConfig::MAX_SCAN_RESULTS
-      ? DefenseLabConfig::MAX_SCAN_RESULTS
-      : static_cast<size_t>(found);
+  networkCount = 0;
+  strongest = -127;
+  openNetworks = 0;
 
-  for (size_t i = 0; i < count; ++i) {
-    NetworkRecord record;
-    record.ssid = WiFi.SSID(static_cast<int>(i));
-    record.bssid = WiFi.BSSIDstr(static_cast<int>(i));
-    record.rssi = WiFi.RSSI(static_cast<int>(i));
-    record.channel = static_cast<uint8_t>(WiFi.channel(static_cast<int>(i)));
-    record.security = securityLabel(WiFi.encryptionType(static_cast<int>(i)));
-    networks[networkCount++] = record;
+  for (
+    int i = 0;
+    i < found &&
+    networkCount < DefenseConfig::MAX_NETWORKS;
+    ++i
+  ) {
+    NetworkRecord& n = networks[networkCount++];
+    n.ssid = WiFi.SSID(i);
+    n.bssid = WiFi.BSSIDstr(i);
+    n.rssi = WiFi.RSSI(i);
+    n.channel = WiFi.channel(i);
+    n.security = authName(WiFi.encryptionType(i));
+
+    if (n.rssi > strongest) strongest = n.rssi;
+    if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) ++openNetworks;
   }
 
   WiFi.scanDelete();
-  wifiScannerRestoreMonitorChannel();
+
+  const uint8_t channel = getMonitorChannel();
+  if (channel >= 1 && channel <= 13) {
+    esp_wifi_set_channel(
+      channel,
+      WIFI_SECOND_CHAN_NONE
+    );
+  }
+
+  if (!wasPaused) {
+    detectorResume();
+  }
+
+  lastScanMs = millis();
   return true;
 }
 
-void wifiScannerRestoreMonitorChannel() {
-  esp_wifi_set_channel(
-    storageGetMonitorChannel(),
-    WIFI_SECOND_CHAN_NONE
-  );
-}
-
-size_t wifiScannerNetworkCount() {
-  return networkCount;
-}
-
-uint8_t wifiScannerCurrentChannel() {
-  return storageGetMonitorChannel();
-}
-
-String wifiScannerNetworksJson() {
+String wifiScannerJson() {
   String json;
-  json.reserve(128 + networkCount * 170);
+  json.reserve(256 + networkCount * 140);
   json = "[";
 
   for (size_t i = 0; i < networkCount; ++i) {
     if (i) json += ",";
-    const NetworkRecord& network = networks[i];
+    const NetworkRecord& n = networks[i];
 
-    json +=
-      "{\"ssid\":\"" + DefenseLabText::jsonEscape(network.ssid) +
-      "\",\"bssid\":\"" + DefenseLabText::jsonEscape(network.bssid) +
-      "\",\"rssi\":" + String(network.rssi) +
-      ",\"channel\":" + String(network.channel) +
-      ",\"security\":\"" + DefenseLabText::jsonEscape(network.security) +
-      "\"}";
+    json += "{\"ssid\":\"" + DefenseText::jsonEscape(n.ssid) + "\"";
+    json += ",\"bssid\":\"" + DefenseText::jsonEscape(n.bssid) + "\"";
+    json += ",\"rssi\":" + String(n.rssi);
+    json += ",\"channel\":" + String(n.channel);
+    json += ",\"security\":\"" + DefenseText::jsonEscape(n.security) + "\"}";
   }
 
   return json + "]";
 }
 
-String wifiScannerChannelsJson() {
-  uint16_t counts[14] = {};
-  int32_t rssiSum[14] = {};
+size_t wifiScannerCount() {
+  return networkCount;
+}
 
-  for (size_t i = 0; i < networkCount; ++i) {
-    const uint8_t channel = networks[i].channel;
-    if (channel >= 1 && channel <= 13) {
-      ++counts[channel];
-      rssiSum[channel] += networks[i].rssi;
-    }
-  }
+int32_t wifiScannerStrongestRssi() {
+  return strongest;
+}
 
-  String json = "[";
-
-  for (uint8_t channel = 1; channel <= 13; ++channel) {
-    if (channel > 1) json += ",";
-
-    const int32_t average =
-      counts[channel] ? rssiSum[channel] / counts[channel] : -127;
-
-    json +=
-      "{\"channel\":" + String(channel) +
-      ",\"networks\":" + String(counts[channel]) +
-      ",\"avgRssi\":" + String(average) +
-      "}";
-  }
-
-  return json + "]";
+uint8_t wifiScannerOpenCount() {
+  return openNetworks;
 }

@@ -2,9 +2,9 @@
 #include <Arduino.h>
 
 void wifiScannerBegin();
-bool wifiScannerScan();
-void wifiScannerRestoreMonitorChannel();
-String wifiScannerNetworksJson();
-String wifiScannerChannelsJson();
-size_t wifiScannerNetworkCount();
-uint8_t wifiScannerCurrentChannel();
+void wifiScannerLoop();
+bool wifiScannerRun();
+String wifiScannerJson();
+size_t wifiScannerCount();
+int32_t wifiScannerStrongestRssi();
+uint8_t wifiScannerOpenCount();

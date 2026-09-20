@@ -11,38 +11,39 @@ extern "C" {
 #include "crypto_store.h"
 
 namespace {
-constexpr char PREFIX[] = "enc2:";
+constexpr char PREFIX[] = "enc1:";
 constexpr uint8_t NONCE_SIZE = 12;
 constexpr uint8_t TAG_SIZE = 16;
-constexpr size_t MASTER_KEY_SIZE = 32;
+constexpr size_t MASTER_SIZE = 32;
 
-bool loadOrCreateMasterSecret(uint8_t output[MASTER_KEY_SIZE]) {
+bool loadOrCreateMaster(uint8_t out[MASTER_SIZE]) {
   Preferences secure;
-  if (!secure.begin("defsec", false)) return false;
+  if (!secure.begin("def-sec", false)) return false;
 
-  if (secure.getBytesLength("master") == MASTER_KEY_SIZE) {
-    const size_t read = secure.getBytes("master", output, MASTER_KEY_SIZE);
+  const size_t length = secure.getBytesLength("master");
+  if (length == MASTER_SIZE) {
+    const size_t read = secure.getBytes("master", out, MASTER_SIZE);
     secure.end();
-    return read == MASTER_KEY_SIZE;
+    return read == MASTER_SIZE;
   }
 
-  esp_fill_random(output, MASTER_KEY_SIZE);
-  const size_t written = secure.putBytes("master", output, MASTER_KEY_SIZE);
+  esp_fill_random(out, MASTER_SIZE);
+  const size_t written = secure.putBytes("master", out, MASTER_SIZE);
   secure.end();
-  return written == MASTER_KEY_SIZE;
+  return written == MASTER_SIZE;
 }
 
 bool deriveKey(uint8_t key[32]) {
-  uint8_t master[MASTER_KEY_SIZE];
-  if (!loadOrCreateMasterSecret(master)) return false;
+  uint8_t master[MASTER_SIZE];
+  if (!loadOrCreateMaster(master)) return false;
 
-  const uint64_t chipId = ESP.getEfuseMac();
-  const char context[] = "ESP32-Defense-Lab-credential-v1";
-  uint8_t material[MASTER_KEY_SIZE + sizeof(chipId) + sizeof(context) - 1];
+  const uint64_t chip = ESP.getEfuseMac();
+  uint8_t material[MASTER_SIZE + sizeof(chip) + 28] = {};
+  memcpy(material, master, MASTER_SIZE);
+  memcpy(material + MASTER_SIZE, &chip, sizeof(chip));
 
-  memcpy(material, master, MASTER_KEY_SIZE);
-  memcpy(material + MASTER_KEY_SIZE, &chipId, sizeof(chipId));
-  memcpy(material + MASTER_KEY_SIZE + sizeof(chipId), context, sizeof(context) - 1);
+  const char context[] = "ESP32-Wireless-Defense-Lab";
+  memcpy(material + MASTER_SIZE + sizeof(chip), context, sizeof(context) - 1);
 
   mbedtls_sha256(material, sizeof(material), key, 0);
   memset(master, 0, sizeof(master));
@@ -52,37 +53,38 @@ bool deriveKey(uint8_t key[32]) {
 
 String hexEncode(const uint8_t* data, size_t length) {
   static const char hex[] = "0123456789abcdef";
-  String output;
-  output.reserve(length * 2);
+  String out;
+  out.reserve(length * 2);
   for (size_t i = 0; i < length; ++i) {
-    output += hex[(data[i] >> 4) & 0x0F];
-    output += hex[data[i] & 0x0F];
+    out += hex[(data[i] >> 4) & 0x0F];
+    out += hex[data[i] & 0x0F];
   }
-  return output;
+  return out;
 }
 
-int fromHex(char c) {
+int hexValue(char c) {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'a' && c <= 'f') return c - 'a' + 10;
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;
   return -1;
 }
 
-bool hexDecode(const String& input, std::vector<uint8_t>& output) {
+bool hexDecode(const String& input, std::vector<uint8_t>& out) {
   if (input.length() % 2 != 0) return false;
-  output.resize(input.length() / 2);
-  for (size_t i = 0; i < output.size(); ++i) {
-    const int high = fromHex(input[i * 2]);
-    const int low = fromHex(input[i * 2 + 1]);
-    if (high < 0 || low < 0) return false;
-    output[i] = static_cast<uint8_t>((high << 4) | low);
+  out.resize(input.length() / 2);
+
+  for (size_t i = 0; i < out.size(); ++i) {
+    const int hi = hexValue(input[i * 2]);
+    const int lo = hexValue(input[i * 2 + 1]);
+    if (hi < 0 || lo < 0) return false;
+    out[i] = static_cast<uint8_t>((hi << 4) | lo);
   }
   return true;
 }
 }
 
-bool isProtectedSecret(const String& storedValue) {
-  return storedValue.startsWith(PREFIX);
+bool isProtectedSecret(const String& value) {
+  return value.startsWith(PREFIX);
 }
 
 String protectSecret(const String& plainText) {
@@ -94,19 +96,19 @@ String protectSecret(const String& plainText) {
   uint8_t nonce[NONCE_SIZE];
   uint8_t tag[TAG_SIZE];
   esp_fill_random(nonce, sizeof(nonce));
+
   std::vector<uint8_t> cipher(plainText.length());
+  mbedtls_gcm_context ctx;
+  mbedtls_gcm_init(&ctx);
 
-  mbedtls_gcm_context context;
-  mbedtls_gcm_init(&context);
-
-  if (mbedtls_gcm_setkey(&context, MBEDTLS_CIPHER_ID_AES, key, 256) != 0) {
-    mbedtls_gcm_free(&context);
+  if (mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, 256) != 0) {
+    mbedtls_gcm_free(&ctx);
     memset(key, 0, sizeof(key));
     return "";
   }
 
   const int result = mbedtls_gcm_crypt_and_tag(
-    &context,
+    &ctx,
     MBEDTLS_GCM_ENCRYPT,
     plainText.length(),
     nonce,
@@ -119,19 +121,20 @@ String protectSecret(const String& plainText) {
     tag
   );
 
-  mbedtls_gcm_free(&context);
+  mbedtls_gcm_free(&ctx);
   memset(key, 0, sizeof(key));
   if (result != 0) return "";
 
-  String output = PREFIX;
-  output += hexEncode(nonce, sizeof(nonce));
-  output += hexEncode(tag, sizeof(tag));
-  output += hexEncode(cipher.data(), cipher.size());
-  return output;
+  String out = PREFIX;
+  out += hexEncode(nonce, sizeof(nonce));
+  out += hexEncode(tag, sizeof(tag));
+  out += hexEncode(cipher.data(), cipher.size());
+  return out;
 }
 
 String unprotectSecret(const String& storedValue) {
-  if (!isProtectedSecret(storedValue)) return "";
+  if (!storedValue.length()) return "";
+  if (!isProtectedSecret(storedValue)) return storedValue;
 
   std::vector<uint8_t> raw;
   if (!hexDecode(storedValue.substring(strlen(PREFIX)), raw)) return "";
@@ -144,19 +147,19 @@ String unprotectSecret(const String& storedValue) {
   const uint8_t* tag = raw.data() + NONCE_SIZE;
   const uint8_t* cipher = raw.data() + NONCE_SIZE + TAG_SIZE;
   const size_t cipherLength = raw.size() - NONCE_SIZE - TAG_SIZE;
+
   std::vector<uint8_t> plain(cipherLength + 1, 0);
+  mbedtls_gcm_context ctx;
+  mbedtls_gcm_init(&ctx);
 
-  mbedtls_gcm_context context;
-  mbedtls_gcm_init(&context);
-
-  if (mbedtls_gcm_setkey(&context, MBEDTLS_CIPHER_ID_AES, key, 256) != 0) {
-    mbedtls_gcm_free(&context);
+  if (mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, key, 256) != 0) {
+    mbedtls_gcm_free(&ctx);
     memset(key, 0, sizeof(key));
     return "";
   }
 
   const int result = mbedtls_gcm_auth_decrypt(
-    &context,
+    &ctx,
     cipherLength,
     nonce,
     NONCE_SIZE,
@@ -168,7 +171,7 @@ String unprotectSecret(const String& storedValue) {
     plain.data()
   );
 
-  mbedtls_gcm_free(&context);
+  mbedtls_gcm_free(&ctx);
   memset(key, 0, sizeof(key));
   if (result != 0) return "";
 

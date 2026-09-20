@@ -1,62 +1,90 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
-#include "storage.h"
-#include "scanner.h"
+#include "config.h"
 #include "detector.h"
 #include "display.h"
+#include "storage.h"
+#include "system_monitor.h"
 #include "web_admin.h"
+#include "wifi_scanner.h"
 
-namespace {
-void startManagementAp() {
-  IPAddress ip(192, 168, 4, 1);
-  IPAddress mask(255, 255, 255, 0);
+void setup() {
+  Serial.begin(115200);
+  delay(400);
 
+  Serial.println();
+  Serial.println("==============================");
+  Serial.println("ESP32 Wireless Defense Lab");
+  Serial.println("Passive monitoring firmware");
+  Serial.println("==============================");
+
+  storageBegin();
+
+  WiFi.persistent(false);
   WiFi.mode(WIFI_AP_STA);
-  WiFi.setSleep(false);
-  WiFi.softAPConfig(ip, ip, mask);
+  WiFi.disconnect(false, true);
+  delay(100);
 
-  WiFi.softAP(
+  IPAddress apIp(
+    DefenseConfig::AP_IP_A,
+    DefenseConfig::AP_IP_B,
+    DefenseConfig::AP_IP_C,
+    DefenseConfig::AP_IP_D
+  );
+
+  WiFi.softAPConfig(
+    apIp,
+    apIp,
+    IPAddress(255, 255, 255, 0)
+  );
+
+  const bool apReady = WiFi.softAP(
     getApSsid().c_str(),
     getApPassword().c_str(),
     getMonitorChannel(),
     false,
     4
   );
-}
-}
 
-void setup() {
-  Serial.begin(115200);
-  delay(300);
+  detectorUpdateThreshold(
+    getAlertThreshold()
+  );
 
-  Serial.println();
-  Serial.println("ESP32 Wireless Defense Lab");
-  Serial.println("Defensive passive monitor");
-
-  storageBegin();
-  startManagementAp();
-
-  detectorSetChannel(getMonitorChannel());
-
-  scannerBegin();
   detectorBegin();
+  wifiScannerBegin();
   displayBegin();
+  systemMonitorBegin();
   webAdminBegin();
 
-  Serial.print("Management Wi-Fi: ");
-  Serial.println(getApSsid());
-  Serial.println("Dashboard: http://192.168.4.1");
+  appendEventLog(
+    "system",
+    String("Firmware v") +
+      DefenseConfig::VERSION +
+      " ready on channel " +
+      String(getMonitorChannel())
+  );
 
-  if (initialSetupRequired()) {
-    Serial.println("First boot: change setup credentials before normal use.");
+  Serial.print("Management AP: ");
+  Serial.println(getApSsid());
+  Serial.print("Dashboard: http://");
+  Serial.println(WiFi.softAPIP());
+  Serial.println(
+    "Passive-only: no frame injection or credential capture."
+  );
+
+  if (!apReady) {
+    Serial.println(
+      "WARNING: management AP failed to start."
+    );
   }
 }
 
 void loop() {
-  detectorLoop();
-  scannerLoop();
-  displayLoop();
   webAdminLoop();
+  detectorLoop();
+  wifiScannerLoop();
+  displayLoop();
+  systemMonitorLoop();
   delay(2);
 }
