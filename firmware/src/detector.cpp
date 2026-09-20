@@ -9,6 +9,7 @@ extern "C" {
 #include "detection_logic.h"
 #include "detector.h"
 #include "models.h"
+#include "storage.h"
 #include "text_utils.h"
 
 namespace {
