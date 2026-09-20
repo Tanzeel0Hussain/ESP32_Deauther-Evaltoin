@@ -7,10 +7,10 @@ on:
       - "firmware/**"
       - "tests/**"
       - "platformio.ini"
-      - ".github/workflows/firmware.yml"
-      - ".github/releases/**"
       - "VERSION"
       - "manifest.json"
+      - ".github/releases/**"
+      - ".github/workflows/firmware.yml"
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -19,7 +19,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: esp32-defense-firmware-\${{ github.ref }}
+  group: defense-firmware-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,11 +27,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v7
+      - name: Setup Python
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -54,16 +56,17 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           size = Path(".pio/build/esp32dev/firmware.bin").stat().st_size
-          limit = 1310720
-          print("Firmware:", size, "bytes", f"({size/limit:.1%} of app partition)")
+          limit = 1_310_720
+          print(f"Firmware: {size:,} bytes ({size/limit:.1%} of app partition)")
           if size > int(limit * 0.90):
               raise SystemExit("Firmware exceeds 90% app-partition budget")
           PY
 
-      - name: Prepare firmware artifacts
+      - name: Prepare browser and release firmware
         shell: bash
         run: |
           set -euo pipefail
+
           BUILD=".pio/build/esp32dev"
           OUT="docs/firmware"
           mkdir -p "$OUT"
@@ -83,9 +86,11 @@ jobs:
           cp "$BUILD/partitions.bin" "$OUT/partitions.bin"
           cp "$BOOT_APP" "$OUT/boot_app0.bin"
           cp "$BUILD/firmware.bin" "$OUT/firmware.bin"
-          cp "$BUILD/firmware.bin" "$OUT/esp32-defense-lab-ota.bin"
+          cp "$BUILD/firmware.bin" "$OUT/esp32-defense-lab-app.bin"
 
-          python -m esptool --chip esp32 merge-bin \
+          python -m esptool \
+            --chip esp32 \
+            merge-bin \
             --flash-mode dio \
             --flash-size 4MB \
             --output "$OUT/esp32-defense-lab-full.bin" \
@@ -94,27 +99,19 @@ jobs:
             0xe000 "$OUT/boot_app0.bin" \
             0x10000 "$OUT/firmware.bin"
 
-          (
-            cd "$OUT"
-            sha256sum \
-              esp32-defense-lab-full.bin \
-              esp32-defense-lab-ota.bin \
-              > SHA256SUMS.txt
-          )
-
-      - uses: actions/upload-artifact@v7
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v7
         with:
-          name: esp32-defense-lab-\${{ github.sha }}
+          name: esp32-defense-lab-${{ github.ref_name }}-firmware
           path: |
             docs/firmware/esp32-defense-lab-full.bin
-            docs/firmware/esp32-defense-lab-ota.bin
-            docs/firmware/SHA256SUMS.txt
+            docs/firmware/esp32-defense-lab-app.bin
             docs/firmware/bootloader.bin
             docs/firmware/partitions.bin
             docs/firmware/boot_app0.bin
             docs/firmware/firmware.bin
 
-      - name: Publish stable browser firmware
+      - name: Publish browser firmware
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
         shell: bash
         run: |
@@ -123,39 +120,48 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add -f docs/firmware/*.bin docs/firmware/SHA256SUMS.txt
+          git add -f docs/firmware/*.bin
 
           if ! git diff --cached --quiet; then
-            git commit -m "build: publish ESP32 Defense Lab firmware [skip ci]"
+            git commit -m "build: publish ESP32 Defense Lab browser firmware"
           fi
 
           git pull --rebase origin main
           git push
 
-      - name: Create immutable release
+      - name: Tag and publish immutable release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release:')
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
 
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          TAG="v$VERSION"
+
           if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::VERSION must use semantic versioning."
+            echo "::error::VERSION must use semantic version format."
             exit 1
           fi
 
-          TAG="v$VERSION"
           git fetch --tags origin
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "::error::Tag $TAG already exists. Bump VERSION instead of overwriting a release."
+            echo "::error::Tag $TAG already exists. Releases are immutable."
             exit 1
           fi
 
           git tag -a "$TAG" -m "ESP32 Wireless Defense Lab $TAG"
           git push origin "$TAG"
+
+          (
+            cd docs/firmware
+            sha256sum \
+              esp32-defense-lab-full.bin \
+              esp32-defense-lab-app.bin \
+              > SHA256SUMS.txt
+          )
 
           NOTES=".github/releases/$TAG.md"
 
@@ -166,7 +172,7 @@ jobs:
               --notes-file "$NOTES" \
               --latest \
               docs/firmware/esp32-defense-lab-full.bin \
-              docs/firmware/esp32-defense-lab-ota.bin \
+              docs/firmware/esp32-defense-lab-app.bin \
               docs/firmware/SHA256SUMS.txt
           else
             gh release create "$TAG" \
@@ -175,6 +181,6 @@ jobs:
               --generate-notes \
               --latest \
               docs/firmware/esp32-defense-lab-full.bin \
-              docs/firmware/esp32-defense-lab-ota.bin \
+              docs/firmware/esp32-defense-lab-app.bin \
               docs/firmware/SHA256SUMS.txt
           fi
