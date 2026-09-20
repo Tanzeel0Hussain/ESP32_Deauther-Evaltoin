@@ -9,10 +9,16 @@ inline uint8_t selectCommittedSlot(
   bool slot0Valid,
   bool slot1Valid
 ) {
-  if (requestedSlot == 0 && slot0Valid) return 0;
-  if (requestedSlot == 1 && slot1Valid) return 1;
-  if (slot0Valid) return 0;
-  if (slot1Valid) return 1;
+  if (requestedSlot == 0) {
+    if (slot0Valid) return 0;
+    if (slot1Valid) return 1;
+  }
+
+  if (requestedSlot == 1) {
+    if (slot1Valid) return 1;
+    if (slot0Valid) return 0;
+  }
+
   return NO_SLOT;
 }
 
