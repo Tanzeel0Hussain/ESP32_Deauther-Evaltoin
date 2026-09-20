@@ -1,366 +1,161 @@
-# 🔱 Hydra-ESP32 WiFi Security Tool
-
-<div align="center">
-<img src="https://img.shields.io/badge/ESP32-WiFi%20Security-red?style=for-the-badge&logo=espressif" alt="ESP32"/>
-<img src="https://img.shields.io/badge/Arduino-IDE-blue?style=for-the-badge&logo=arduino" alt="Arduino"/>
-<img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License"/>
-</div>
-
 <div align="center">
 
-[![Stars](https://img.shields.io/github/stars/yourusername/Hydra-ESP32?style=for-the-badge&color=yellow)](https://github.com/yourusername/Hydra-ESP32/stargazers)
-[![Forks](https://img.shields.io/github/forks/yourusername/Hydra-ESP32?style=for-the-badge&color=orange)](https://github.com/yourusername/Hydra-ESP32/network/members)
-[![Issues](https://img.shields.io/github/issues/yourusername/Hydra-ESP32?style=for-the-badge&color=red)](https://github.com/yourusername/Hydra-ESP32/issues)
-[![License](https://img.shields.io/github/license/yourusername/Hydra-ESP32?style=for-the-badge&color=blue)](LICENSE)
-[![Last Commit](https://img.shields.io/github/last-commit/yourusername/Hydra-ESP32?style=for-the-badge&color=brightgreen)](https://github.com/yourusername/Hydra-ESP32/commits)
+# ESP32 Wireless Defense Lab
+
+### Passive Wi-Fi visibility and management-frame anomaly detection for classic ESP32
+
+[![Firmware CI](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml/badge.svg)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml)
+[![Live Site](https://img.shields.io/badge/Live-Project_Site-29d9ff)](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/)
+[![Firmware](https://img.shields.io/badge/Firmware-v1.0.0-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.0)
+[![ESP32](https://img.shields.io/badge/Target-Classic_ESP32-2c7dff)](docs/HARDWARE.md)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 </div>
 
-A powerful wireless security research firmware for ESP32 microcontrollers. Features multi-target deauthentication attacks, Evil Twin captive portals, beacon spamming, BLE advertisement flooding, deauth detection, WPA handshake capture, and Bluetooth HID payloads. Built for authorized penetration testing and security research.
+## What this project is
 
----
+**ESP32 Wireless Defense Lab** is a defensive, receive-only Wi-Fi monitoring project for classic ESP32 boards. It observes nearby 2.4 GHz Wi-Fi metadata and selected 802.11 management frames, then presents useful visibility through a secure local dashboard.
 
-## ⚠️ Legal Disclaimer
+The maintained firmware is intentionally defensive. It does **not** include deauthentication transmission, Evil Twin access-point impersonation, credential collection, beacon flooding, handshake/PMKID harvesting, BLE spam, or HID payload modules.
 
-> **This tool is for authorized security testing and educational purposes only.** Unauthorized access to computer networks is illegal under the Computer Fraud and Abuse Act (US), Computer Misuse Act (UK), IT Act 2000, and equivalent legislation worldwide. The authors accept no liability for misuse. You are solely responsible for complying with all applicable laws.
+## Core features
 
----
+| Area | Capabilities |
+|---|---|
+| Passive detector | Observes deauthentication and disassociation management frames |
+| Burst alerts | Per-source/BSSID burst tracking with configurable threshold and cooldown |
+| Wi-Fi inventory | Nearby SSID, BSSID, RSSI, channel and security metadata |
+| Channel analytics | Event activity for 2.4 GHz channels 1–13 |
+| Local dashboard | Responsive dark dashboard at `192.168.4.1` |
+| Security | WPA2 management AP, HTTP Digest admin auth, per-boot CSRF token |
+| Credential storage | AES-256-GCM protected local management credentials |
+| First boot | Mandatory replacement of public setup credentials |
+| Event history | Reset reasons, scans, settings changes and detector events |
+| OLED | Optional SSD1306 128×64 status display on GPIO 21/22 |
+| Reliability | Task watchdog, NVS persistence, factory reset |
+| Quality | PlatformIO build, host detector tests, flash-size budget in GitHub Actions |
 
-## 📋 Table of Contents
+## Start here
 
-- [Features](#-features)
-- [Hardware Requirements](#-hardware-requirements)
-- [Installation](#-installation)
-- [Usage](#-usage)
-- [Attack Modules](#-attack-modules)
-- [Web Interface](#-web-interface)
-- [API Reference](#-api-reference)
-- [Troubleshooting](#-troubleshooting)
-- [Credits](#-credits)
-- [License](#-license)
+### Browser install
 
----
+1. Open the [live project page](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/).
+2. Connect a supported classic ESP32 by USB.
+3. Click **Install Firmware** in a Chromium-based desktop browser.
+4. After flashing, join `ESP32-Defense-Lab`.
+5. Open `http://192.168.4.1`.
+6. Sign in with the setup credentials below.
+7. Replace both public setup passwords before the dashboard unlocks.
 
-## 🚀 Features
+### First-boot setup credentials
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-Target Deauth** | Attack up to 16 WiFi networks simultaneously |
-| **Evil Twin Portal** | Captive portal with automatic password verification |
-| **Beacon Spam** | Generate up to 100 fake access points |
-| **Ghost Mode** | Extract SSIDs from probe requests and clone them |
-| **Deauth Detector** | Monitor and alert on active deauthentication attacks |
-| **WPA Handshake** | Capture 4-way handshakes for offline cracking |
-| **PMKID Capture** | Clientless WPA2 password hash extraction |
-| **BSSID Clone** | Full AP impersonation (SSID + BSSID + Channel) |
-| **BLE Spam** | Flood Apple, Samsung, and Google pairing popups |
-| **HID Payloads** | Bluetooth keyboard injection attacks |
-| **OLED Support** | Live status display on SSD1306 128x64 screen |
+| Setting | Factory setup value |
+|---|---|
+| Management Wi-Fi | `ESP32-Defense-Lab` |
+| Wi-Fi password | `defenselab` |
+| Dashboard | `http://192.168.4.1` |
+| Admin username | `admin` |
+| Admin password | `changeme32` |
 
----
+These are setup-only defaults. The Wi-Fi password and admin password must be changed and must remain different.
 
-## 🛠️ Hardware Requirements
+## How detection works
 
-### Required
+The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window.
 
-| Component | Specification |
-|-----------|---------------|
-| **Microcontroller** | ESP32 DevKit V1 / ESP32-WROOM-32 / ESP32-WROVER |
-| **Chip** | Xtensa LX6 dual-core (240MHz) |
-| **Flash** | Minimum 4MB |
-| **USB** | Micro-USB or USB-C for programming |
+An alert means **suspicious management-frame activity was observed**. It is not proof that a specific device is malicious, because MAC addresses can be spoofed and legitimate infrastructure may also emit management frames.
 
-> ⚠️ **Note:** ESP32-S2, S3, C3, and other variants are **not supported** due to different radio architectures.
+The firmware never calls an 802.11 transmit/injection routine for attack traffic.
 
-### Optional
+## Single-radio limitation
 
-| Component | Purpose |
-|-----------|---------|
-| **SSD1306 OLED** | 128x64 I2C display for live attack status |
-| **External Antenna** | Increased range for attacks |
+Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network scan temporarily leaves the selected channel and the firmware restores the configured monitor channel afterward.
 
-### Pinout (OLED)
+This is a compact lab/defensive visibility device, not a multi-radio enterprise WIDS.
+
+## Optional OLED
+
+A 128×64 SSD1306 I²C display at address `0x3C` is detected automatically.
 
 | OLED | ESP32 |
-|------|-------|
-| VCC | 3.3V |
+|---|---|
+| VCC | 3.3 V |
 | GND | GND |
 | SDA | GPIO 21 |
 | SCL | GPIO 22 |
 
----
+The display shows the local IP, monitor channel, network count, observed deauthentication count and alert count.
 
-## 📦 Installation
+## Build from source
 
-### Step 1: Arduino IDE Setup
+Requirements: Python, PlatformIO and a supported classic ESP32 development board.
 
-Add ESP32 board support:
-File → Preferences → Additional Board Manager URLs:
-https://dl.espressif.com/dl/package_esp32_index.json
-
-Tools → Board → Board Manager → Search "ESP32" → Install
-
-### Step 2: Required Libraries
-
-Install these libraries via Library Manager (`Sketch → Include Library → Manage Libraries`):
-
-| Library | Version | Author |
-|---------|---------|--------|
-| `U8g2` | Latest | olikraus |
-| `ArduinoJson` | 6.x | Benoit Blanchon |
-
-For BLE features:
-- `ESP32 BLE Arduino` (Built-in with ESP32 core)
-
-### Step 3: Upload Firmware
-
-1. Connect ESP32 to computer via USB
-2. Select board: `Tools → Board → ESP32 Dev Module`
-3. Select port: `Tools → Port → (Your COM Port)`
-4. Upload speed: `921600`
-5. Open `Hydra_ESP.ino` and click **Upload**
-
-### Boot Mode (If Upload Fails)
-
-Hold **BOOT** button → Click **Upload** → Release BOOT when "Connecting..." appears.
-
----
-
-## 📱 Usage
-
-### Initial Setup
-
-| Parameter | Default Value |
-|-----------|---------------|
-| **AP SSID** | `Hydra-ESP` |
-| **AP Password** | `12345678` |
-| **Web Interface** | `http://192.168.4.1` |
-| **Admin Page** | `http://192.168.4.1/admin` |
-
-### Quick Start
-
-1. **Power on** ESP32
-2. **Connect** your phone/laptop to `Hydra-ESP` WiFi network
-3. **Open browser** and navigate to `192.168.4.1`
-4. **Scan** for target networks
-5. **Select** a network and launch attack
-
----
-
-## ⚔️ Attack Modules
-
-### 1. Deauthentication Attack
-
-Sends 802.11 deauthentication frames to disconnect clients from target AP.
-
-```cpp
-// Packet structure
-Frame Control: 0xC0 (Deauth)
-Reason Code: 0x0007 (Class 3 frame from non-associated STA)
+```bash
+git clone https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin.git
+cd ESP32_Deauther-Evaltoin
+pio run -e esp32dev
 ```
-# Supported Methods:
 
-Broadcast deauth (all clients)
-Directed deauth (specific MAC)
-Deauth + Disassociation combo
-**Effectiveness:** Bypassed by 802.11w (MFP). Use BSSID Clone for MFP-enabled networks.
+Upload from PlatformIO:
 
-## 2. Evil Twin Captive Portal
-Creates an open clone of the target network with identical SSID.
-
-# Workflow:
-
-1. Clone target AP (same SSID, channel)
-2. Run parallel deauth attack
-3. Victims connect to open clone
-4. Captive portal requests password
-5. Automatic verification against real AP
-6. Attack stops on successful verification
-# Portal Features:
-
-- Mobile-responsive design
-- Router firmware update theme
-- Real-time password validation
-- Stores all attempts in memory
-## 3. Beacon Spam
-Floods the RF spectrum with fake beacon frames.
-
-# Configuration:
-
-- Count: 1-100 fake networks
-- SSID: Random or custom list
-- Interval: 100ms default
-- Impact: Pollutes WiFi scan lists on all nearby devices.
-
-## 4. Ghost Mode (Probe Request Sniffer)
-# Mechanism:
-
-1. Enters promiscuous mode
-2. Captures probe request frames
-3. Extracts SSIDs from saved networks
-4. Immediately starts advertising those SSIDs
-**Use Case:** Forces devices to connect to ESP32 instead of legitimate networks.
-
-## 5. Deauth Attack Detector
-**Detection Logic:**
-
-- Monitors management frames in real-time
-- Alerts when >10 deauth frames/sec from single BSSID
-- Flags broadcast deauth (src: 00:00:00:00:00:00)
-- Logs attacker BSSID, channel, and timestamp
-**Display:** Live log table in web interface + OLED alerts.
-
-## 6. WPA Handshake Capture
-Forces re-authentication and captures the 4-way handshake.
-
-# Output Formats:
+```bash
+pio run -e esp32dev -t upload
+pio device monitor -b 115200
 ```
-- .pcap (Wireshark compatible)
-- .hccapx (Hashcat compatible)
+
+## Repository structure
+
+```text
+.
+├── firmware/
+│   ├── include/
+│   │   ├── config.h
+│   │   ├── crypto_store.h
+│   │   ├── detection_logic.h
+│   │   ├── detector.h
+│   │   ├── display.h
+│   │   ├── models.h
+│   │   ├── storage.h
+│   │   ├── system_monitor.h
+│   │   ├── text_utils.h
+│   │   ├── web_admin.h
+│   │   └── wifi_scanner.h
+│   └── src/
+├── tests/
+├── docs/
+│   └── firmware/
+├── assets/
+├── .github/workflows/
+├── index.html
+├── manifest.json
+├── platformio.ini
+├── SECURITY.md
+└── LICENSE
 ```
-**Requirements:** At least one connected client on target network.
 
-## 7. PMKID Capture (Clientless)
-Extracts PMKID from RSN IE without requiring connected clients.
+## Validation status
 
-**Hash Mode:** 22000 (Hashcat)
+| Validation | Status |
+|---|---|
+| Host detector logic tests | Automated in CI |
+| ESP32 firmware compile | Automated in CI |
+| 90% flash budget | Enforced in CI |
+| Offensive modules removed from maintained main branch | Yes |
+| Browser firmware/release packaging | v1.0.0 pipeline |
+| Physical ESP32 boot | Requires real hardware validation |
+| Real RF detection sensitivity | Requires controlled lab validation |
+| OLED hardware | Requires optional display hardware |
 
-**Success Rate:** ~80% on modern WPA2 networks. Some APs disable PMKID transmission.
+See [Hardware Notes](docs/HARDWARE.md) before testing.
 
-## 8. BSSID Clone (Twin Deauth)
-Creates exact AP duplicate including BSSID and channel.
+## Responsible use
 
-**Advantage:** Bypasses 802.11w Management Frame Protection.
+Use the device only where you own the equipment or have permission to monitor the radio environment. The project is designed for defensive visibility and education, not interference.
 
-**Mechanism:** Conflicting beacon frames cause client disconnection.
-## 9. BLE Spam
-Broadcasts fake advertisement packets mimicking popular devices.
+## Author
 
-| Brand | Devices |
-|---------|-------------|
-| **Apple** | AirPods, AirPods Pro, AirPods Max, Apple TV, HomePod, Vision Pro |
-| **Samsung** | Galaxy Buds, Galaxy Watch |
-| **Google** | Pixel Buds, Fast Pair |
-**Effect:** Continuous pairing popups on target devices.
+Built and maintained by **Tanzeel Hussain**.
 
-## 10. Bluetooth HID Payloads
-Advertises as Bluetooth keyboard (```Hydra-XXXX```).
+## License
 
-**Capabilities:**
-
-- Automatic pairing with Windows PCs
-- Keystroke injection
-- Pre-configured payloads (Reverse shell, Download & Execute, etc.)
-
-## 🌐 Web Interface
-Endpoints
-| Endpoint | Function |
-|---------|-------------|
-| **/** | Main control panel |
-| **/scan** | JSON API - scan networks |
-| **/start** | Start attack |
-| **/stop** | Stop attack |
-| **/save** | Save captured password |
-| **/admin** | 	View captured data |
-| **/status** | Attack status JSON |
-
-## Web UI Preview
-- ┌─────────────────────────────────────┐
-- │        🔱 Hydra-ESP32              │
-- │    WiFi Security Tool              │
-- ├─────────────────────────────────────┤
-- │  [🔍 Scan Networks]               │
-- │                                     │
-- │  📶 TargetNetwork (WPA2)          │
-- │  Signal: -45dBm | Ch: 6            │
-- │  [🚀 Start Attack]                 │
-- │                                     │
-- │  Status: 🚨 ATTACKING              │
-- │  Deauth: 150 packets sent          │
-- │  Portal: 3 clients connected         │
-- └─────────────────────────────────────┘
-
-## 🔌 API Reference
-Scan Networks
-# Request:
-```http GET /scan```
-**Response:**
-```json
-{
-  "networks": [
-    {
-      "ssid": "TargetNetwork",
-      "bssid": "AA:BB:CC:DD:EE:FF",
-      "channel": 6,
-      "rssi": -45,
-      "encrypted": true
-    }
-  ]
-}
-```
-# Start Attack
-# Request:
-
-```http
-GET /start?type=deauth&ssid=Target&bssid=AA:BB:CC:DD:EE:FF&ch=6
-```
-# Save Password
-# Request:
-
-```http
-GET /save?pass=password123
-```
-# Response:
-
-OK - Password correct, attack stopped
-NO - Password incorrect
-
-# 🖥️ OLED Display
-If SSD1306 is connected, displays:
-| Screen | Content |
-|---------|-------------|
-| **Boot** | Logo + Firmware version |
-| **Idle** | IP address + Client count |
-| **Scanning** | Progress + Networks found |
-| **Attacking** | Target + Packets sent + Runtime |
-| **Captured** | Password + Network name |
-
-## 🐛 Troubleshooting
-| Issue | Issue |
-|---------|-------------|
-| **Upload failed** | Hold BOOT button during upload |
-| **Port not detected** | Install CH340/CP2102 drivers |
-| **Deauth not working** | Target may have 802.11w enabled. Use BSSID Clone |
-| **Web UI not loading** | Ensure connected to ```Hydra-ESP``` network |
-| **OLED blank** | Check I2C wiring (SDA→GPIO21, SCL→GPIO22) |
-| **BLE not working** | Restart ESP32, BLE stack may need reset |
-| **Password verify fails** | Password verify fails |
-
-## 📊 Performance
-
-| Metric | Value |
-|---------|-------------|
-| **Deauth Rate** | ~20 packets/second per target |
-| **Max Targets** | 16 simultaneous |
-| **Web UI Response** | <100ms |
-| **Scan Time** | ~3 seconds |
-| **BLE Spam Range** | 	~10 meters |
-| **WiFi Range** | ~50 meters (stock antenna) |
-
-## 🔒 Security Features
-- Automatic attack timeout (configurable)
-- NVS encryption for stored credentials
-- WPA2-PSK for management AP
-- CSRF protection on web endpoints
-
-## 🛡️ Defense Recommendations
-To protect against these attacks:
-
-1. **Enable WPA3** - Resists offline dictionary attacks
-2. **Enable 802.11w** - Protected Management Frames
-3. **Use hidden SSID** - Harder to target
-4. **Strong passwords** - 12+ characters, mixed case
-5. **Monitor rogue APs** - Use WiFi scanning tools
-6. **Disable WPS** - Prevent brute force attacks
-7. **BLE pairing** - Disable on unused devices
-Input sanitization on all APIs
+MIT — see [LICENSE](LICENSE).
