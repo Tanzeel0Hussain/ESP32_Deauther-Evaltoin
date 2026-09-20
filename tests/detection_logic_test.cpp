@@ -85,7 +85,7 @@ int main() {
   assert(selectCommittedSlot(0, true, false) == 0);
   assert(selectCommittedSlot(1, true, false) == 0);
   assert(selectCommittedSlot(1, true, true) == 1);
-  assert(selectCommittedSlot(NO_SLOT, false, true) == 1);
+  assert(selectCommittedSlot(NO_SLOT, false, true) == NO_SLOT);
   assert(selectCommittedSlot(NO_SLOT, false, false) == NO_SLOT);
   assert(inactiveSlot(0) == 1);
   assert(inactiveSlot(1) == 0);
