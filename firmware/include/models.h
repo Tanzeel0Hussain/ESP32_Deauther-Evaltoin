@@ -20,4 +20,5 @@ struct AlertRecord {
   int8_t rssi = -127;
   uint8_t channel = 0;
   uint8_t subtype = 0;
+  bool protectedFrame = false;
 };

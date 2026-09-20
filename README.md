@@ -6,7 +6,7 @@
 
 [![Firmware CI](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml/badge.svg)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/actions/workflows/firmware.yml)
 [![Live Site](https://img.shields.io/badge/Live-Project_Site-29d9ff)](https://tanzeel0hussain.github.io/ESP32_Deauther-Evaltoin/)
-[![Firmware](https://img.shields.io/badge/Firmware-v1.0.2-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.2)
+[![Firmware](https://img.shields.io/badge/Firmware-v1.0.3-50e6a7)](https://github.com/Tanzeel0Hussain/ESP32_Deauther-Evaltoin/releases/tag/v1.0.3)
 [![ESP32](https://img.shields.io/badge/Target-Classic_ESP32-2c7dff)](docs/HARDWARE.md)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -24,16 +24,17 @@ The maintained firmware is intentionally defensive. It does **not** include deau
 |---|---|
 | Passive detector | Observes deauthentication and disassociation management frames |
 | Burst alerts | Per-source/BSSID burst tracking with configurable threshold and cooldown |
+| Detection accuracy | Retry + sequence deduplication, PMF-aware reason handling, 32-entry last-seen LRU source tracker |
 | Wi-Fi inventory | Nearby SSID, BSSID, RSSI, channel and security metadata |
 | Channel analytics | Event activity for 2.4 GHz channels 1–13 |
 | Local dashboard | Responsive dark dashboard at `192.168.4.1` |
 | Security | WPA2 management AP, HTTP Digest admin auth, per-boot CSRF token |
-| Credential storage | AES-256-GCM protected credentials + serial-assisted recovery |
+| Credential storage | AES-256-GCM protected credentials + dual-slot atomic commit + serial-assisted recovery |
 | First boot | Mandatory replacement of public setup credentials |
 | Event history | Reset reasons, scans, settings changes and detector events |
 | OLED | Optional SSD1306 128×64 status display on GPIO 21/22 |
-| Reliability | Task watchdog, NVS persistence, factory reset |
-| Quality | PlatformIO build, host detector tests, flash-size budget in GitHub Actions |
+| Reliability | Checked detector/scan health, channel restore verification, full 16-entry alert queue, task watchdog, NVS persistence and factory reset |
+| Quality | Pinned PlatformIO tooling, expanded host logic tests, repo-wide defensive guard, flash-size budget in GitHub Actions |
 
 ## Start here
 
@@ -61,7 +62,7 @@ These are setup-only defaults. The Wi-Fi password and admin password must be cha
 
 ## How detection works
 
-The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window. The radio callback queues only fixed-size alert metadata; MAC formatting and alert-history updates happen later in the normal firmware loop instead of inside the Wi-Fi callback.
+The ESP32 enables promiscuous **receive** mode with a management-frame filter. It watches for 802.11 deauthentication and disassociation subtypes, deduplicates retry retransmissions using the Retry bit plus sequence/fragment metadata, tracks bursts by source/BSSID, and creates an alert when the configured threshold is reached within the detection window. Protected Management Frames are still counted as observations, but their encrypted body is not misreported as a reason code. The radio callback queues only fixed-size alert metadata; MAC formatting and alert-history updates happen later in the normal firmware loop instead of inside the Wi-Fi callback.
 
 An alert means **suspicious management-frame activity was observed**. It is not proof that a specific device is malicious, because MAC addresses can be spoofed and legitimate infrastructure may also emit management frames.
 
@@ -69,7 +70,7 @@ The detector never calls an 802.11 raw transmit/injection routine. The local man
 
 ## Single-radio limitation
 
-Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network inventory scan uses passive scanning, temporarily leaves the selected channel, and the firmware restores the configured monitor channel afterward.
+Classic ESP32 has one 2.4 GHz Wi-Fi radio. The local management AP and passive monitor therefore share the configured channel. A nearby-network inventory scan uses passive scanning, temporarily leaves the selected channel, and the firmware verifies channel restoration plus detector resume afterward. The dashboard warns that the management connection can briefly pause while the single radio visits other channels.
 
 This is a compact lab/defensive visibility device, not a multi-radio enterprise WIDS.
 
@@ -141,7 +142,7 @@ pio device monitor -b 115200
 | ESP32 firmware compile | Automated in CI |
 | 90% flash budget | Enforced in CI |
 | Offensive modules removed from maintained main branch | Yes |
-| Browser firmware/release packaging | v1.0.2 pipeline |
+| Browser firmware/release packaging | v1.0.3 immutable-source pipeline |
 | Physical ESP32 boot | Requires real hardware validation |
 | Real RF detection sensitivity | Requires controlled lab validation |
 | OLED hardware | Requires optional display hardware |

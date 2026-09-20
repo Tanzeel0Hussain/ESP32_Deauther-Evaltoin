@@ -51,11 +51,21 @@ void setup() {
     getAlertThreshold()
   );
 
-  detectorBegin();
+  const bool detectorReady =
+    detectorBegin();
+
   wifiScannerBegin();
   displayBegin();
   systemMonitorBegin();
   webAdminBegin();
+
+  if (!detectorReady) {
+    appendEventLog(
+      "detector",
+      "Detector startup failed with error " +
+        String(detectorLastError())
+    );
+  }
 
   appendEventLog(
     "system",

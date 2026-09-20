@@ -10,15 +10,17 @@ CI verifies compilation and pure detector logic, but it cannot prove real RF beh
 | Dashboard | `192.168.4.1` loads and status updates repeatedly |
 | Persistence | Credentials, channel and threshold survive a power cycle |
 | Nearby scan | Authorized local networks show plausible SSID/BSSID/RSSI/channel/security using the passive scan path |
-| Scan recovery | Passive detector resumes on the configured channel after scanning |
+| Scan recovery | Passive detector resumes on the configured channel after scanning; dashboard reports an error if channel restore/resume fails |
 | Channel change | Management AP and detector return on the selected channel after restart |
 | Passive counters | Authorized lab disconnect/reconnect activity increments observed counters |
 | Burst alert | Controlled authorized test traffic crossing the threshold creates an alert |
-| Alert context | Source/BSSID/channel/RSSI/reason fields are populated |
+| Alert context | Source/BSSID/channel/RSSI fields are populated; unprotected frames show a reason code and protected/PMF frames show reason unavailable |
+| Retry deduplication | Authorized replay/retry test traffic with identical Retry + sequence/fragment metadata does not inflate the unique-frame burst count |
 | Cooldown | Repeated activity respects the configured alert cooldown |
 | Detector reset | Counters and alerts clear without corrupting settings |
 | Logs | Boot/scan/settings events persist and clear correctly |
-| Credential recovery | Corrupt one stored provisioned credential on a sacrificial test device/NVS image | Device boots directly into serial-assisted random recovery instead of using public defaults |
+| Credential recovery | After corrupting one stored provisioned credential on a sacrificial test device/NVS image, the device boots directly into serial-assisted random recovery instead of using public defaults |
+| Credential transaction rollback | If a staged credential update is interrupted before commit on a sacrificial NVS image, previously committed credentials remain active; an incomplete first setup enters recovery |
 | Factory reset | Settings and credential master secret clear; first-boot setup returns |
 | OLED | Optional SSD1306 status displays correctly at address 0x3C |
 | Heap stability | Repeated dashboard refreshes/scans do not progressively exhaust heap |

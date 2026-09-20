@@ -16,9 +16,10 @@ ESP32 promiscuous management-frame filter
         │
         ▼
 source MAC + BSSID burst tracker
+(Retry/sequence dedup + last-seen LRU)
         │
         ▼
-bounded fixed-size pending-alert queue
+bounded 16-entry fixed-size pending-alert queue
         │
         ▼
 normal Arduino loop
@@ -62,14 +63,15 @@ Classic ESP32 has one 2.4 GHz radio, so the management AP and passive monitor sh
 - HTTP Digest dashboard authentication.
 - Per-boot CSRF token on state-changing requests.
 - AES-256-GCM application-level credential storage with a random per-device master secret.
-- Serial-assisted random recovery credentials if critical stored secrets cannot be decrypted.
+- Dual credential slots: new SSID/password/admin values are staged and verified in the inactive slot, then activated by one commit-pointer update; the previous committed slot remains available for rollback.
+- Serial-assisted random recovery credentials if no complete committed credential set can be recovered or critical stored secrets cannot be decrypted.
 - Factory reset clears both normal settings and the credential-master namespace.
 
 ## Defensive boundary
 
 The maintained firmware does not implement deauthentication/disassociation transmission, access-point impersonation, credential capture, WPA/PMKID harvesting, beacon/BLE flooding, or HID injection.
 
-CI also scans maintained firmware source and fails if the ESP32 raw 802.11 transmit API `esp_wifi_80211_tx` or offensive credential-harvesting implementation markers appear.
+CI scans relevant source-code extensions across the current repository checkout and fails if the ESP32 raw 802.11 transmit API `esp_wifi_80211_tx` or offensive credential-harvesting implementation markers appear.
 
 
 ## Radio-transmission scope

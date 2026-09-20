@@ -40,6 +40,20 @@ void displayLoop() {
   oled.drawStr(0, 23, ("IP " + ip).c_str());
   oled.drawStr(0, 34, ("Ch " + String(getMonitorChannel()) + "  APs " + String(wifiScannerCount())).c_str());
   oled.drawStr(0, 45, ("Deauth " + String(detectorTotalDeauth())).c_str());
-  oled.drawStr(0, 56, ("Alerts " + String(detectorAlertCount())).c_str());
+  if (detectorHealthy()) {
+    oled.drawStr(
+      0,
+      56,
+      ("Alerts " +
+       String(detectorAlertCount())).c_str()
+    );
+  } else {
+    oled.drawStr(
+      0,
+      56,
+      ("Detector ERR " +
+       String(detectorLastError())).c_str()
+    );
+  }
   oled.sendBuffer();
 }
