@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Preferences.h>
+#include <esp_system.h>
 
 #include "config.h"
 #include "crypto_store.h"
@@ -10,17 +11,126 @@ namespace {
 Preferences prefs;
 constexpr uint8_t LOG_COUNT = DefenseConfig::MAX_LOGS;
 uint32_t bootSequence = 0;
+bool recoveryMode = false;
+String recoveryApSsid;
+String recoveryApPassword;
+String recoveryAdminPassword;
+
+String randomRecoveryPassword(size_t length) {
+  static const char alphabet[] =
+    "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    "abcdefghijkmnopqrstuvwxyz"
+    "23456789";
+
+  String value;
+  value.reserve(length);
+
+  for (size_t i = 0; i < length; ++i) {
+    value += alphabet[
+      esp_random() % (sizeof(alphabet) - 1)
+    ];
+  }
+
+  return value;
+}
+
+void ensureRecoveryCredentials() {
+  if (
+    recoveryApPassword.length() >= 12 &&
+    recoveryAdminPassword.length() >= 12
+  ) {
+    return;
+  }
+
+  const uint64_t chipId = ESP.getEfuseMac();
+  char suffix[9];
+
+  snprintf(
+    suffix,
+    sizeof(suffix),
+    "%08lX",
+    static_cast<unsigned long>(
+      chipId & 0xFFFFFFFFULL
+    )
+  );
+
+  recoveryApSsid =
+    "DefenseLab-Recovery-" +
+    String(suffix).substring(4);
+
+  recoveryApPassword =
+    randomRecoveryPassword(16);
+
+  recoveryAdminPassword =
+    randomRecoveryPassword(18);
+}
+
+void enterRecoveryMode(const char* reason) {
+  if (recoveryMode) return;
+
+  recoveryMode = true;
+  ensureRecoveryCredentials();
+
+  Serial.println();
+  Serial.println(
+    "=== ESP32 Defense Lab credential recovery ==="
+  );
+  Serial.println(reason);
+  Serial.print("Recovery Wi-Fi: ");
+  Serial.println(recoveryApSsid);
+  Serial.print("Recovery Wi-Fi password: ");
+  Serial.println(recoveryApPassword);
+  Serial.println("Recovery admin username: admin");
+  Serial.print("Recovery admin password: ");
+  Serial.println(recoveryAdminPassword);
+  Serial.println(
+    "Open http://192.168.4.1 and set new credentials."
+  );
+  Serial.println(
+    "============================================="
+  );
+}
 
 String logKey(uint8_t index) {
   return "log" + String(index);
 }
 
-String readProtected(const char* key, const char* fallback) {
-  const String stored = prefs.getString(key, "");
-  if (!stored.length()) return String(fallback);
+String readProtected(
+  const char* key,
+  const char* fallback,
+  const char* failureReason
+) {
+  if (recoveryMode) {
+    ensureRecoveryCredentials();
 
-  const String plain = unprotectSecret(stored);
-  return plain.length() ? plain : String(fallback);
+    if (String(key) == "ap_pass") {
+      return recoveryApPassword;
+    }
+
+    if (String(key) == "admin_pass") {
+      return recoveryAdminPassword;
+    }
+  }
+
+  const String stored =
+    prefs.getString(key, "");
+
+  if (!stored.length()) {
+    return String(fallback);
+  }
+
+  const String plain =
+    unprotectSecret(stored);
+
+  if (plain.length()) {
+    return plain;
+  }
+
+  enterRecoveryMode(failureReason);
+
+  return String(key) == "ap_pass"
+    ? recoveryApPassword
+    : recoveryAdminPassword;
 }
 }
 
@@ -40,19 +150,44 @@ void storageBegin() {
 }
 
 String getApSsid() {
-  return prefs.getString("ap_ssid", DefenseConfig::DEFAULT_AP_SSID);
+  if (recoveryMode) {
+    ensureRecoveryCredentials();
+    return recoveryApSsid;
+  }
+
+  return prefs.getString(
+    "ap_ssid",
+    DefenseConfig::DEFAULT_AP_SSID
+  );
 }
 
 String getApPassword() {
-  return readProtected("ap_pass", DefenseConfig::DEFAULT_AP_PASSWORD);
+  return readProtected(
+    "ap_pass",
+    DefenseConfig::DEFAULT_AP_PASSWORD,
+    "Stored management Wi-Fi credential could not be decrypted."
+  );
 }
 
 String getAdminUser() {
-  return prefs.getString("admin_user", DefenseConfig::DEFAULT_ADMIN_USER);
+  return recoveryMode
+    ? String("admin")
+    : prefs.getString(
+        "admin_user",
+        DefenseConfig::DEFAULT_ADMIN_USER
+      );
 }
 
 String getAdminPassword() {
-  return readProtected("admin_pass", DefenseConfig::DEFAULT_ADMIN_PASSWORD);
+  return readProtected(
+    "admin_pass",
+    DefenseConfig::DEFAULT_ADMIN_PASSWORD,
+    "Stored administrator credential could not be decrypted."
+  );
+}
+
+bool credentialRecoveryRequired() {
+  return recoveryMode;
 }
 
 uint8_t getMonitorChannel() {
@@ -68,6 +203,8 @@ uint16_t getAlertThreshold() {
 }
 
 bool initialSetupRequired() {
+  if (recoveryMode) return true;
+
   return
     getApPassword() == DefenseConfig::DEFAULT_AP_PASSWORD ||
     getAdminPassword() == DefenseConfig::DEFAULT_ADMIN_PASSWORD;
@@ -100,6 +237,14 @@ bool setInitialCredentials(
   ok &= prefs.putString("ap_pass", protectedAp) > 0;
   ok &= prefs.putString("admin_user", adminUser) > 0;
   ok &= prefs.putString("admin_pass", protectedAdmin) > 0;
+
+  if (ok) {
+    recoveryMode = false;
+    recoveryApSsid = "";
+    recoveryApPassword = "";
+    recoveryAdminPassword = "";
+  }
+
   return ok;
 }
 
@@ -176,4 +321,9 @@ void factoryResetStorage() {
     secure.clear();
     secure.end();
   }
+
+  recoveryMode = false;
+  recoveryApSsid = "";
+  recoveryApPassword = "";
+  recoveryAdminPassword = "";
 }

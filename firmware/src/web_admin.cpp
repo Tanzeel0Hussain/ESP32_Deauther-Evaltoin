@@ -78,9 +78,21 @@ input{width:100%;margin-top:6px;background:#071521;border:1px solid #29475f;colo
 button{width:100%;margin-top:19px;border:0;border-radius:11px;padding:14px;background:linear-gradient(135deg,#1479ff,#29d9ff);font-weight:900;color:#04111a}
 .note{margin-top:15px;background:#082238;border:1px solid #173d59;border-radius:11px;padding:12px;color:#9db7ca;font-size:.82rem}
 </style></head><body><main><section class="card">
-<div class="badge">Mandatory first-boot security</div>
-<h1>Secure the defense dashboard.</h1>
-<p>Replace the public setup credentials before monitoring. The management Wi-Fi password and admin password must be different.</p>
+<div class="badge">)HTML";
+  html += credentialRecoveryRequired()
+    ? "Credential recovery"
+    : "Mandatory first-boot security";
+  html += R"HTML(</div>
+<h1>)HTML";
+  html += credentialRecoveryRequired()
+    ? "Recover the defense dashboard securely."
+    : "Secure the defense dashboard.";
+  html += R"HTML(</h1>
+<p>)HTML";
+  html += credentialRecoveryRequired()
+    ? "Stored credentials could not be decrypted. Random recovery credentials were printed to the physical serial console; public factory passwords are not used as a fallback. Set fresh credentials now."
+    : "Replace the public setup credentials before monitoring. The management Wi-Fi password and admin password must be different.";
+  html += R"HTML(</p>
 <form method="post" action="/setup">
 <input type="hidden" name="csrf" value=")HTML";
   html += csrfToken;
@@ -318,18 +330,45 @@ void webAdminBegin() {
       return;
     }
 
-    const bool channelChanged =
-      static_cast<uint8_t>(channel) != getMonitorChannel();
+    const uint8_t oldChannel =
+      getMonitorChannel();
 
-    if (
-      !setMonitorChannel(static_cast<uint8_t>(channel)) ||
-      !setAlertThreshold(static_cast<uint16_t>(threshold))
-    ) {
-      server.send(500, "text/plain", "Could not persist settings.");
+    const uint16_t oldThreshold =
+      getAlertThreshold();
+
+    const bool channelChanged =
+      static_cast<uint8_t>(channel) !=
+      oldChannel;
+
+    const bool channelSaved =
+      setMonitorChannel(
+        static_cast<uint8_t>(channel)
+      );
+
+    const bool thresholdSaved =
+      channelSaved &&
+      setAlertThreshold(
+        static_cast<uint16_t>(threshold)
+      );
+
+    if (!thresholdSaved) {
+      if (channelSaved) {
+        setMonitorChannel(oldChannel);
+      }
+
+      setAlertThreshold(oldThreshold);
+
+      server.send(
+        500,
+        "text/plain",
+        "Could not persist settings; previous values were restored."
+      );
       return;
     }
 
-    detectorUpdateThreshold(static_cast<uint16_t>(threshold));
+    detectorUpdateThreshold(
+      static_cast<uint16_t>(threshold)
+    );
     appendEventLog("settings", "Monitor channel/threshold updated");
     server.send(200, "application/json", "{\"ok\":true}");
 

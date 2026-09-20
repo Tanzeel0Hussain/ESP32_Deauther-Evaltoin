@@ -7,6 +7,7 @@ String getApSsid();
 String getApPassword();
 String getAdminUser();
 String getAdminPassword();
+bool credentialRecoveryRequired();
 uint8_t getMonitorChannel();
 uint16_t getAlertThreshold();
 
